@@ -17,7 +17,7 @@
                 <input asp-for="OrderGuid" type="hidden" />
                 <input asp-for="LiabilityShift" type="hidden" />
                 <script asp-location="Footer">
-                    $(function () {
+                    $(document).ready(function () {
                         $('#confirm-order-form').submit(function () {
                             $('input[type=submit]', this).attr('disabled', 'disabled');
                         });
@@ -58,7 +58,7 @@
                             {
                                 <a class="read" id="read-terms">@T("Checkout.TermsOfService.Read")</a>
                                 <script asp-location="Footer">
-                                    $(function () {
+                                    $(document).ready(function () {
                                         $('#read-terms').on('click', function (e) {
                                             e.preventDefault();
                                             displayPopupContentFromUrl('@Url.RouteUrl("TopicPopup", new { SystemName = "conditionsofuse" })', '@T("Checkout.TermsOfService")');

@@ -1,33 +1,35 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using System;
+using Microsoft.AspNetCore.Http;
 using Newtonsoft.Json;
 using Nop.Plugin.Payments.PayPalCommerce.Services.Api.Models;
 
-namespace Nop.Plugin.Payments.PayPalCommerce.Services.Api.PaymentTokens;
-
-/// <summary>
-/// Represents the request to get a payment token of vaulted payment source
-/// </summary>
-public class GetPaymentTokenRequest : PaymentToken, IAuthorizedRequest
+namespace Nop.Plugin.Payments.PayPalCommerce.Services.Api.PaymentTokens
 {
-    #region Properties
-
     /// <summary>
-    /// Gets or sets the ID of the payment token.
+    /// Represents the request to get a payment token of vaulted payment source
     /// </summary>
-    [JsonIgnore]
-    public string PaymentTokenId { get; set; }
+    public class GetPaymentTokenRequest : PaymentToken, IAuthorizedRequest
+    {
+        #region Properties
 
-    /// <summary>
-    /// Gets the request path
-    /// </summary>
-    [JsonIgnore]
-    public string Path => $"v3/vault/payment-tokens/{Uri.EscapeDataString(PaymentTokenId)}?";
+        /// <summary>
+        /// Gets or sets the ID of the payment token.
+        /// </summary>
+        [JsonIgnore]
+        public string PaymentTokenId { get; set; }
 
-    /// <summary>
-    /// Gets the request method
-    /// </summary>
-    [JsonIgnore]
-    public string Method => HttpMethods.Get;
+        /// <summary>
+        /// Gets the request path
+        /// </summary>
+        [JsonIgnore]
+        public string Path => $"v3/vault/payment-tokens/{Uri.EscapeDataString(PaymentTokenId)}?";
 
-    #endregion
+        /// <summary>
+        /// Gets the request method
+        /// </summary>
+        [JsonIgnore]
+        public string Method => HttpMethods.Get;
+
+        #endregion
+    }
 }

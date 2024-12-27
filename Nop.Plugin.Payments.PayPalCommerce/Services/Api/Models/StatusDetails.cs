@@ -1,19 +1,20 @@
 ﻿using Newtonsoft.Json;
 
-namespace Nop.Plugin.Payments.PayPalCommerce.Services.Api.Models;
-
-/// <summary>
-/// Represents the details of the transaction status
-/// </summary>
-public class StatusDetails
+namespace Nop.Plugin.Payments.PayPalCommerce.Services.Api.Models
 {
-    #region Properties
-
     /// <summary>
-    /// Gets or sets the reason why the transaction is in the particular status.
+    /// Represents the details of the transaction status
     /// </summary>
-    [JsonProperty(PropertyName = "reason")]
-    public string Reason { get; set; }
+    public class StatusDetails
+    {
+        #region Properties
 
-    #endregion
+        /// <summary>
+        /// Gets or sets the reason why the transaction is in the particular status.
+        /// </summary>
+        [JsonProperty(PropertyName = "reason")]
+        public string Reason { get; set; }
+
+        #endregion
+    }
 }

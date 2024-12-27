@@ -1,19 +1,20 @@
 ﻿using Newtonsoft.Json;
 
-namespace Nop.Plugin.Payments.PayPalCommerce.Services.Api.Models;
-
-/// <summary>
-/// Represents the instruction to verify the card
-/// </summary>
-public class VerificationInstruction
+namespace Nop.Plugin.Payments.PayPalCommerce.Services.Api.Models
 {
-    #region Properties
-
     /// <summary>
-    /// Gets or sets the method used for card verification.
+    /// Represents the instruction to verify the card
     /// </summary>
-    [JsonProperty(PropertyName = "method")]
-    public string Method { get; set; }
+    public class VerificationInstruction
+    {
+        #region Properties
 
-    #endregion
+        /// <summary>
+        /// Gets or sets the method used for card verification.
+        /// </summary>
+        [JsonProperty(PropertyName = "method")]
+        public string Method { get; set; }
+
+        #endregion
+    }
 }

@@ -1,19 +1,20 @@
 ﻿using Newtonsoft.Json;
 
-namespace Nop.Plugin.Payments.PayPalCommerce.Services.Api.Models;
-
-/// <summary>
-/// Represents the payment token metadata
-/// </summary>
-public class PaymentTokenMetadata
+namespace Nop.Plugin.Payments.PayPalCommerce.Services.Api.Models
 {
-    #region Properties
-
     /// <summary>
-    /// Gets or sets the related order ID.
+    /// Represents the payment token metadata
     /// </summary>
-    [JsonProperty(PropertyName = "order_id")]
-    public string OrderId { get; set; }
+    public class PaymentTokenMetadata
+    {
+        #region Properties
 
-    #endregion
+        /// <summary>
+        /// Gets or sets the related order ID.
+        /// </summary>
+        [JsonProperty(PropertyName = "order_id")]
+        public string OrderId { get; set; }
+
+        #endregion
+    }
 }

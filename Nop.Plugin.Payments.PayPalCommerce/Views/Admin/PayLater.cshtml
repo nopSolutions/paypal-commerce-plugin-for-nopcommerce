@@ -18,7 +18,7 @@
 </div>
 
 <script asp-asp-location="Footer">
-    $(function () {
+    $(document).ready(function () {
         window.merchantConfigurators?.Messaging({
             config: @Html.Raw(Model.Config),
             locale: '@Model.Locale',

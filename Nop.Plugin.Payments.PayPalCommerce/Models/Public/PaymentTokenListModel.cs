@@ -1,19 +1,21 @@
-﻿using Nop.Web.Framework.Models;
+﻿using System.Collections.Generic;
+using Nop.Web.Framework.Models;
 
-namespace Nop.Plugin.Payments.PayPalCommerce.Models.Public;
-
-/// <summary>
-/// Represents the payment token list model
-/// </summary>
-public record PaymentTokenListModel : BaseNopModel
+namespace Nop.Plugin.Payments.PayPalCommerce.Models.Public
 {
-    #region Properties
+    /// <summary>
+    /// Represents the payment token list model
+    /// </summary>
+    public record PaymentTokenListModel : BaseNopModel
+    {
+        #region Properties
 
-    public bool VaultIsEnabled { get; set; }
+        public bool VaultIsEnabled { get; set; }
 
-    public string Error { get; set; }
+        public string Error { get; set; }
 
-    public List<PaymentTokenModel> PaymentTokens { get; set; } = new();
+        public List<PaymentTokenModel> PaymentTokens { get; set; } = new();
 
-    #endregion
+        #endregion
+    }
 }

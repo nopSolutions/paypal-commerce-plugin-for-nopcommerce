@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Nop.Plugin.Payments.PayPalCommerce.Domain;
@@ -9,81 +10,82 @@ using Nop.Web.Framework.Components;
 using Nop.Web.Framework.Infrastructure;
 using Nop.Web.Models.Catalog;
 
-namespace Nop.Plugin.Payments.PayPalCommerce.Components.Public;
-
-/// <summary>
-/// Represents the view component to display PayPal buttons in the public store
-/// </summary>
-public class ButtonsViewComponent : NopViewComponent
+namespace Nop.Plugin.Payments.PayPalCommerce.Components.Public
 {
-    #region Fields
-
-    private readonly PayPalCommerceModelFactory _modelFactory;
-    private readonly PayPalCommerceServiceManager _serviceManager;
-    private readonly PayPalCommerceSettings _settings;
-
-    #endregion
-
-    #region Ctor
-
-    public ButtonsViewComponent(PayPalCommerceModelFactory modelFactory,
-        PayPalCommerceServiceManager serviceManager,
-        PayPalCommerceSettings settings)
-    {
-        _modelFactory = modelFactory;
-        _serviceManager = serviceManager;
-        _settings = settings;
-    }
-
-    #endregion
-
-    #region Methods
-
     /// <summary>
-    /// Invoke view component
+    /// Represents the view component to display PayPal buttons in the public store
     /// </summary>
-    /// <param name="widgetZone">Widget zone name</param>
-    /// <param name="additionalData">Additional data</param>
-    /// <returns>
-    /// A task that represents the asynchronous operation
-    /// The task result contains the view component result
-    /// </returns>
-    public async Task<IViewComponentResult> InvokeAsync(string widgetZone, object additionalData)
+    public class ButtonsViewComponent : NopViewComponent
     {
-        var (active, _) = await _serviceManager.IsActiveAsync(_settings);
-        if (!active)
-            return Content(string.Empty);
+        #region Fields
 
-        PaymentInfoModel model = null;
+        private readonly PayPalCommerceModelFactory _modelFactory;
+        private readonly PayPalCommerceServiceManager _serviceManager;
+        private readonly PayPalCommerceSettings _settings;
 
-        if (widgetZone.Equals(PublicWidgetZones.ProductDetailsAddInfo))
+        #endregion
+
+        #region Ctor
+
+        public ButtonsViewComponent(PayPalCommerceModelFactory modelFactory,
+            PayPalCommerceServiceManager serviceManager,
+            PayPalCommerceSettings settings)
         {
-            if (_settings.DisplayButtonsOnProductDetails)
+            _modelFactory = modelFactory;
+            _serviceManager = serviceManager;
+            _settings = settings;
+        }
+
+        #endregion
+
+        #region Methods
+
+        /// <summary>
+        /// Invoke view component
+        /// </summary>
+        /// <param name="widgetZone">Widget zone name</param>
+        /// <param name="additionalData">Additional data</param>
+        /// <returns>
+        /// A task that represents the asynchronous operation
+        /// The task result contains the view component result
+        /// </returns>
+        public async Task<IViewComponentResult> InvokeAsync(string widgetZone, object additionalData)
+        {
+            var (active, _) = await _serviceManager.IsActiveAsync(_settings);
+            if (!active)
+                return Content(string.Empty);
+
+            PaymentInfoModel model = null;
+
+            if (widgetZone.Equals(PublicWidgetZones.ProductDetailsAddInfo))
             {
-                var productId = additionalData is ProductDetailsModel.AddToCartModel product ? (int?)product.ProductId : null;
-                model = await _modelFactory.PreparePaymentInfoModelAsync(ButtonPlacement.Product, productId);
+                if (_settings.DisplayButtonsOnProductDetails)
+                {
+                    var productId = additionalData is ProductDetailsModel.AddToCartModel product ? (int?)product.ProductId : null;
+                    model = await _modelFactory.PreparePaymentInfoModelAsync(ButtonPlacement.Product, productId);
+                }
             }
-        }
-        else if (widgetZone.Equals(PublicWidgetZones.OrderSummaryContentBefore))
-        {
-            if (_settings.DisplayButtonsOnShoppingCart)
+            else if (widgetZone.Equals(PublicWidgetZones.OrderSummaryContentBefore))
             {
-                var routeName = HttpContext.GetEndpoint()?.Metadata.GetMetadata<RouteNameMetadata>()?.RouteName;
-                if (routeName == PayPalCommerceDefaults.Route.ShoppingCart)
-                    model = await _modelFactory.PreparePaymentInfoModelAsync(ButtonPlacement.Cart);
+                if (_settings.DisplayButtonsOnShoppingCart)
+                {
+                    var routeName = HttpContext.GetEndpoint()?.Metadata.GetMetadata<RouteNameMetadata>()?.RouteName;
+                    if (routeName == PayPalCommerceDefaults.Route.ShoppingCart)
+                        model = await _modelFactory.PreparePaymentInfoModelAsync(ButtonPlacement.Cart);
+                }
             }
-        }
-        else
-        {
-            if (_settings.DisplayButtonsOnPaymentMethod)
-                model = await _modelFactory.PreparePaymentInfoModelAsync(ButtonPlacement.PaymentMethod);
+            else
+            {
+                if (_settings.DisplayButtonsOnPaymentMethod)
+                    model = await _modelFactory.PreparePaymentInfoModelAsync(ButtonPlacement.PaymentMethod);
+            }
+
+            if (model is null)
+                return Content(string.Empty);
+
+            return View("~/Plugins/Payments.PayPalCommerce/Views/Public/_Buttons.cshtml", model);
         }
 
-        if (model is null)
-            return Content(string.Empty);
-
-        return View("~/Plugins/Payments.PayPalCommerce/Views/Public/_Buttons.cshtml", model);
+        #endregion
     }
-
-    #endregion
 }

@@ -12,7 +12,7 @@
 <div id="@paypalMessagesContainer" class="paypal-messages-container" style="display: none;"></div>
 
 <script asp-location="Footer">
-    $(function () {
+    $(document).ready(function () {
         var loadScript = @((Model.LoadScript).ToString().ToLower());
         if (loadScript) {
             var script = window.merchantConfigurators?.generateHeaderScript({

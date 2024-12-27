@@ -1,13 +1,14 @@
-﻿namespace Nop.Plugin.Payments.PayPalCommerce.Models.Public;
-
-/// <summary>
-/// Represents the order approved model
-/// </summary>
-public record OrderApprovedModel : OrderModel
+﻿namespace Nop.Plugin.Payments.PayPalCommerce.Models.Public
 {
-    #region Properties
+    /// <summary>
+    /// Represents the order approved model
+    /// </summary>
+    public record OrderApprovedModel : OrderModel
+    {
+        #region Properties
 
-    public bool PayNow { get; set; }
+        public bool PayNow { get; set; }
 
-    #endregion
+        #endregion
+    }
 }

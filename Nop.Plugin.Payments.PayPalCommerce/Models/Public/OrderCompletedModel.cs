@@ -1,9 +1,10 @@
-﻿namespace Nop.Plugin.Payments.PayPalCommerce.Models.Public;
-
-/// <summary>
-/// Represents the order completed model
-/// </summary>
-public record OrderCompletedModel : OrderModel
+﻿namespace Nop.Plugin.Payments.PayPalCommerce.Models.Public
 {
-    public string Warning { get; set; }
+    /// <summary>
+    /// Represents the order completed model
+    /// </summary>
+    public record OrderCompletedModel : OrderModel
+    {
+        public string Warning { get; set; }
+    }
 }

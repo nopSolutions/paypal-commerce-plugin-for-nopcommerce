@@ -1,25 +1,28 @@
-﻿namespace Nop.Plugin.Payments.PayPalCommerce.Models.Public;
+﻿using System.Collections.Generic;
 
-/// <summary>
-/// Represents the order confirmation model
-/// </summary>
-public record OrderConfirmModel : OrderModel
+namespace Nop.Plugin.Payments.PayPalCommerce.Models.Public
 {
-    #region Properties
+    /// <summary>
+    /// Represents the order confirmation model
+    /// </summary>
+    public record OrderConfirmModel : OrderModel
+    {
+        #region Properties
 
-    public string OrderGuid { get; set; }
+        public string OrderGuid { get; set; }
 
-    public string LiabilityShift { get; set; }
+        public string LiabilityShift { get; set; }
 
-    public bool TermsOfServiceOnOrderConfirmPage { get; set; }
+        public bool TermsOfServiceOnOrderConfirmPage { get; set; }
 
-    public bool TermsOfServicePopup { get; set; }
+        public bool TermsOfServicePopup { get; set; }
 
-    public string MinOrderTotalWarning { get; set; }
+        public string MinOrderTotalWarning { get; set; }
 
-    public bool DisplayCaptcha { get; set; }
+        public bool DisplayCaptcha { get; set; }
 
-    public IList<string> Warnings { get; set; } = new List<string>();
+        public IList<string> Warnings { get; set; } = new List<string>();
 
-    #endregion
+        #endregion
+    }
 }

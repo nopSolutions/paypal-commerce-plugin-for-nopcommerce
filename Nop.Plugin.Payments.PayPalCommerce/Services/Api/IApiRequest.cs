@@ -1,17 +1,18 @@
-﻿namespace Nop.Plugin.Payments.PayPalCommerce.Services.Api;
-
-/// <summary>
-/// Represents API request
-/// </summary>
-public interface IApiRequest
+﻿namespace Nop.Plugin.Payments.PayPalCommerce.Services.Api
 {
     /// <summary>
-    /// Gets the request path
+    /// Represents API request
     /// </summary>
-    public string Path { get; }
+    public interface IApiRequest
+    {
+        /// <summary>
+        /// Gets the request path
+        /// </summary>
+        public string Path { get; }
 
-    /// <summary>
-    /// Gets the request method
-    /// </summary>
-    public string Method { get; }
+        /// <summary>
+        /// Gets the request method
+        /// </summary>
+        public string Method { get; }
+    }
 }

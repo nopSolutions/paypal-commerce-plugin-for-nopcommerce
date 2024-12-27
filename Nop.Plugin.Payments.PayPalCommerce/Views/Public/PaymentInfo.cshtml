@@ -3,7 +3,7 @@
 }
 
 <script asp-location="Footer">
-    $(function () {
+    $(document).ready(function () {
         $('button.payment-info-next-step-button').hide();
         window.location = '@(Url.RouteUrl(PayPalCommerceDefaults.Route.PaymentInfo))';
     });

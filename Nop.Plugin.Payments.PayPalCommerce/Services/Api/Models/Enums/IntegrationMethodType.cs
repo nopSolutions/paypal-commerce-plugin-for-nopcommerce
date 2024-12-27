@@ -1,12 +1,13 @@
-﻿namespace Nop.Plugin.Payments.PayPalCommerce.Services.Api.Models.Enums;
-
-/// <summary>
-/// Represents the type of the integration method
-/// </summary>
-public enum IntegrationMethodType
+﻿namespace Nop.Plugin.Payments.PayPalCommerce.Services.Api.Models.Enums
 {
     /// <summary>
-    /// PayPal integration method.
+    /// Represents the type of the integration method
     /// </summary>
-    PAYPAL
+    public enum IntegrationMethodType
+    {
+        /// <summary>
+        /// PayPal integration method.
+        /// </summary>
+        PAYPAL
+    }
 }
