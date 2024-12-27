@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Nop.Core;
 using Nop.Core.Configuration;
-using Nop.Core.Domain.Customers;
 using Nop.Core.Domain.Orders;
 using Nop.Core.Http.Extensions;
 using Nop.Plugin.Payments.PayPalCommerce.Domain;
@@ -11,7 +10,6 @@ using Nop.Plugin.Payments.PayPalCommerce.Factories;
 using Nop.Plugin.Payments.PayPalCommerce.Models.Admin;
 using Nop.Plugin.Payments.PayPalCommerce.Services;
 using Nop.Services;
-using Nop.Services.Common;
 using Nop.Services.Configuration;
 using Nop.Services.Localization;
 using Nop.Services.Messages;
@@ -31,7 +29,6 @@ public class PayPalCommerceController : BasePluginController
     #region Fields
 
     private readonly AppSettings _appSettings;
-    private readonly IGenericAttributeService _genericAttributeService;
     private readonly ILocalizationService _localizationService;
     private readonly INotificationService _notificationService;
     private readonly IPermissionService _permissionService;
@@ -47,7 +44,6 @@ public class PayPalCommerceController : BasePluginController
     #region Ctor
 
     public PayPalCommerceController(AppSettings appSettings,
-        IGenericAttributeService genericAttributeService,
         ILocalizationService localizationService,
         INotificationService notificationService,
         IPermissionService permissionService,
@@ -59,7 +55,6 @@ public class PayPalCommerceController : BasePluginController
         ShoppingCartSettings shoppingCartSettings)
     {
         _appSettings = appSettings;
-        _genericAttributeService = genericAttributeService;
         _localizationService = localizationService;
         _notificationService = notificationService;
         _permissionService = permissionService;
@@ -281,9 +276,11 @@ public class PayPalCommerceController : BasePluginController
 
     #region Configuration
 
-    [CheckPermission(StandardPermission.Configuration.MANAGE_PAYMENT_METHODS)]
-    public async Task<IActionResult> Configure(bool showtour = false)
+    public async Task<IActionResult> Configure()
     {
+        if (!await _permissionService.AuthorizeAsync(StandardPermissionProvider.ManagePaymentMethods))
+            return AccessDeniedView();
+
         var (settings, storeId) = await LoadSettingsAsync();
 
         var model = new ConfigurationModel
@@ -394,25 +391,16 @@ public class PayPalCommerceController : BasePluginController
             }
         }
 
-        //show configuration tour
-        if (showtour)
-        {
-            var customer = await _workContext.GetCurrentCustomerAsync();
-            var hideCard = await _genericAttributeService.GetAttributeAsync<bool>(customer, NopCustomerDefaults.HideConfigurationStepsAttribute);
-            var closeCard = await _genericAttributeService.GetAttributeAsync<bool>(customer, NopCustomerDefaults.CloseConfigurationStepsAttribute);
-
-            if (!hideCard && !closeCard)
-                ViewBag.ShowTour = true;
-        }
-
         return View("~/Plugins/Payments.PayPalCommerce/Views/Admin/Configure.cshtml", model);
     }
 
     [HttpPost, ActionName("Configure")]
     [FormValueRequired("save")]
-    [CheckPermission(StandardPermission.Configuration.MANAGE_PAYMENT_METHODS)]
     public async Task<IActionResult> Configure(ConfigurationModel model)
     {
+        if (!await _permissionService.AuthorizeAsync(StandardPermissionProvider.ManagePaymentMethods))
+            return AccessDeniedView();
+
         if (!ModelState.IsValid)
             return await Configure();
 
@@ -474,9 +462,11 @@ public class PayPalCommerceController : BasePluginController
     }
 
     [HttpPost]
-    [CheckPermission(StandardPermission.Configuration.MANAGE_PAYMENT_METHODS)]
     public async Task<IActionResult> Onboarding(ConfigurationModel model)
     {
+        if (!await _permissionService.AuthorizeAsync(StandardPermissionProvider.ManagePaymentMethods))
+            return await AccessDeniedDataTablesJson();
+
         var (settings, storeId) = await LoadSettingsAsync();
 
         //set onboarding values
@@ -505,9 +495,11 @@ public class PayPalCommerceController : BasePluginController
         return Json(new { success = true });
     }
 
-    [CheckPermission(StandardPermission.Configuration.MANAGE_PAYMENT_METHODS)]
     public async Task<IActionResult> Onboarding(OnboardingCallbackModel model)
     {
+        if (!await _permissionService.AuthorizeAsync(StandardPermissionProvider.ManagePaymentMethods))
+            return AccessDeniedView();
+
         var storeId = model.StoreId;
         (var settings, storeId) = await LoadSettingsAsync(storeId);
 
@@ -565,9 +557,11 @@ public class PayPalCommerceController : BasePluginController
 
     [HttpPost, ActionName("Configure")]
     [FormValueRequired("revoke")]
-    [CheckPermission(StandardPermission.Configuration.MANAGE_PAYMENT_METHODS)]
     public async Task<IActionResult> RevokeAccess()
     {
+        if (!await _permissionService.AuthorizeAsync(StandardPermissionProvider.ManagePaymentMethods))
+            return AccessDeniedView();
+
         var (settings, storeId) = await LoadSettingsAsync();
 
         //delete webhook
@@ -621,9 +615,11 @@ public class PayPalCommerceController : BasePluginController
 
     #region Pay Later
 
-    [CheckPermission(StandardPermission.Configuration.MANAGE_PAYMENT_METHODS)]
     public async Task<IActionResult> PayLater()
     {
+        if (!await _permissionService.AuthorizeAsync(StandardPermissionProvider.ManagePaymentMethods))
+            return AccessDeniedView();
+
         var (settings, _) = await LoadSettingsAsync();
         if (!settings.UseSandbox && !settings.ConfiguratorSupported)
             return RedirectToAction("Configure");
@@ -641,9 +637,11 @@ public class PayPalCommerceController : BasePluginController
     }
 
     [HttpPost]
-    [CheckPermission(StandardPermission.Configuration.MANAGE_PAYMENT_METHODS)]
     public async Task<IActionResult> PayLaterConfig(string config)
     {
+        if (!await _permissionService.AuthorizeAsync(StandardPermissionProvider.ManagePaymentMethods))
+            return await AccessDeniedDataTablesJson();
+
         var (settings, storeId) = await LoadSettingsAsync();
         if (!settings.UseSandbox && !settings.ConfiguratorSupported)
             return ErrorJson("Merchant messaging configurator is not available");
