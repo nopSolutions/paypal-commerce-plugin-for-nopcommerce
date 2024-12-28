@@ -7,11 +7,11 @@
     var learnMore = "<p>Learn more about the PayPal Commerce plugin configuration <a href='https://docs.nopcommerce.com/getting-started/configure-payments/payment-methods/paypal-commerce.html' target='_blank'>here</a>.</p>";
 }
 
-@await Component.InvokeAsync(typeof(StoreScopeConfigurationViewComponent))
+@await Component.InvokeAsync("StoreScopeConfiguration")
 
 @if (Model.IsConfigured)
 {
-    @await Component.InvokeAsync(typeof(SettingModeViewComponent))
+    @await Component.InvokeAsync("SettingMode")
 }
 
 <script>

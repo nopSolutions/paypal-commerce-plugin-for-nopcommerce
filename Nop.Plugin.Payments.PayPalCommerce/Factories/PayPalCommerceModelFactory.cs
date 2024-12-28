@@ -248,7 +248,6 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Factories
 
             //prepare common confirmation model parameters
             var checkoutConfirmModel = await _checkoutModelFactory.PrepareConfirmOrderModelAsync(cart);
-            model.DisplayCaptcha = checkoutConfirmModel.DisplayCaptcha;
             model.MinOrderTotalWarning = checkoutConfirmModel.MinOrderTotalWarning;
             model.TermsOfServiceOnOrderConfirmPage = checkoutConfirmModel.TermsOfServiceOnOrderConfirmPage;
             model.TermsOfServicePopup = checkoutConfirmModel.TermsOfServicePopup;

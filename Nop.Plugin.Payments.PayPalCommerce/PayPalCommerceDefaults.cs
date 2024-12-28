@@ -167,6 +167,40 @@ namespace Nop.Plugin.Payments.PayPalCommerce
 
         #endregion
 
+        #region View components names
+
+        /// <summary>
+        /// Gets the name of the view component to display payment info in the public store
+        /// </summary>
+        public const string PAYMENT_INFO_VIEW_COMPONENT_NAME = "PayPalCommercePaymentInfo";
+
+        /// <summary>
+        /// Gets the name of the view component to display Pay Later messages in the public store
+        /// </summary>
+        public const string MESSAGES_VIEW_COMPONENT_NAME = "PayPalCommerceMessages";
+
+        /// <summary>
+        /// Gets the name of the view component to display PayPal logo in the public store
+        /// </summary>
+        public const string LOGO_VIEW_COMPONENT_NAME = "PayPalCommerceLogo";
+
+        /// <summary>
+        /// Gets the name of the view component to display PayPal buttons in the public store
+        /// </summary>
+        public const string BUTTONS_VIEW_COMPONENT_NAME = "PayPalCommerceButtons";
+
+        /// <summary>
+        /// Gets the name of the view component to display PayPal on the payment methods page in the admin area
+        /// </summary>
+        public const string PAYMENT_METHOD_VIEW_COMPONENT_NAME = "PayPalCommercePaymentMethod";
+
+        /// <summary>
+        /// Gets the name of the view component to render an additional input on the shipment details page in the admin area
+        /// </summary>
+        public const string SHIPMENT_CARRIER_VIEW_COMPONENT_NAME = "PayPalCommerceShipmentCarrier";
+
+        #endregion
+
         #region Onboarding
 
         /// <summary>

@@ -11,18 +11,18 @@
         <h1>@T("Checkout.PaymentInfo")</h1>
     </div>
     <div class="page-body checkout-data">
-        @await Component.InvokeAsync(typeof(WidgetViewComponent), new { widgetZone = PublicWidgetZones.CheckoutPaymentInfoTop, additionalData = Model })
+        @await Component.InvokeAsync("Widget", new { widgetZone = PublicWidgetZones.CheckoutPaymentInfoTop, additionalData = Model })
         <div class="section payment-info">
             <div class="info">
-                @await Component.InvokeAsync(typeof(ButtonsViewComponent), new { widgetZone = "paypal_payment_info" })
+                @await Component.InvokeAsync(PayPalCommerceDefaults.BUTTONS_VIEW_COMPONENT_NAME, new { widgetZone = "paypal_payment_info" })
             </div>
         </div>
-        @await Component.InvokeAsync(typeof(WidgetViewComponent), new { widgetZone = PublicWidgetZones.CheckoutPaymentInfoBottom, additionalData = Model })
+        @await Component.InvokeAsync("Widget", new { widgetZone = PublicWidgetZones.CheckoutPaymentInfoBottom, additionalData = Model })
         <div class="section order-summary">
             <div class="title">
                 <strong>@T("Checkout.OrderSummary")</strong>
             </div>
-            @await Component.InvokeAsync(typeof(OrderSummaryViewComponent))
+            @await Component.InvokeAsync("OrderSummary")
         </div>
     </div>
 </div>

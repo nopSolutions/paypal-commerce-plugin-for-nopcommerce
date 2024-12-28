@@ -6,7 +6,6 @@ using Nop.Core;
 using Nop.Plugin.Payments.PayPalCommerce.Domain;
 using Nop.Plugin.Payments.PayPalCommerce.Factories;
 using Nop.Plugin.Payments.PayPalCommerce.Models.Public;
-using Nop.Services.Localization;
 using Nop.Services.Messages;
 using Nop.Web.Controllers;
 using Nop.Web.Framework.Mvc.Filters;
@@ -18,7 +17,6 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
     {
         #region Fields
 
-        private readonly ILocalizationService _localizationService;
         private readonly INotificationService _notificationService;
         private readonly IWebHelper _webHelper;
         private readonly PayPalCommerceModelFactory _modelFactory;
@@ -27,12 +25,10 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
 
         #region Ctor
 
-        public PayPalCommercePublicController(ILocalizationService localizationService,
-            INotificationService notificationService,
+        public PayPalCommercePublicController(INotificationService notificationService,
             IWebHelper webHelper,
             PayPalCommerceModelFactory modelFactory)
         {
-            _localizationService = localizationService;
             _notificationService = notificationService;
             _webHelper = webHelper;
             _modelFactory = modelFactory;
@@ -149,9 +145,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
             return View("~/Plugins/Payments.PayPalCommerce/Views/Public/ConfirmOrder.cshtml", model);
         }
 
-        [ValidateCaptcha]
         [HttpPost]
-        public async Task<IActionResult> ConfirmOrderPost(string orderId, string orderGuid, string liabilityShift, bool captchaValid)
+        public async Task<IActionResult> ConfirmOrderPost(string orderId, string orderGuid, string liabilityShift)
         {
             var model = await _modelFactory.PrepareOrderConfirmModelAsync(orderId, orderGuid, null, false);
             if (model.LoginIsRequired)
@@ -162,12 +157,6 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
 
             if (!string.IsNullOrEmpty(model.Error))
                 _notificationService.ErrorNotification(model.Error);
-
-            if (model.DisplayCaptcha && !captchaValid)
-            {
-                model.Warnings.Add(await _localizationService.GetResourceAsync("Common.WrongCaptchaMessage"));
-                return View("~/Plugins/Payments.PayPalCommerce/Views/Public/ConfirmOrder.cshtml", model);
-            }
 
             var completedModel = await _modelFactory.PrepareOrderCompletedModelAsync(orderId, liabilityShift);
 

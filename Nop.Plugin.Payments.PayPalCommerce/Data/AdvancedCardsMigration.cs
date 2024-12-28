@@ -1,13 +1,15 @@
 ﻿using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
 using FluentMigrator;
 using Nop.Data;
 using Nop.Data.Extensions;
 using Nop.Data.Migrations;
 using Nop.Plugin.Payments.PayPalCommerce.Domain;
 using Nop.Plugin.Payments.PayPalCommerce.Services;
+using Nop.Services.Common;
 using Nop.Services.Configuration;
 using Nop.Services.Localization;
-using Nop.Web.Framework.Extensions;
 
 namespace Nop.Plugin.Payments.PayPalCommerce.Data
 {
@@ -16,6 +18,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Data
     {
         #region Fields
 
+        private readonly ILanguageService _languageService;
         private readonly ILocalizationService _localizationService;
         private readonly ISettingService _settingService;
         private readonly OnboardingHttpClient _httpClient;
@@ -26,12 +29,14 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Data
 
         #region Ctor
 
-        public AdvancedCardsMigration(ILocalizationService localizationService,
+        public AdvancedCardsMigration(ILanguageService languageService,
+            ILocalizationService localizationService,
             ISettingService settingService,
             OnboardingHttpClient httpClient,
             PayPalCommerceServiceManager serviceManager,
             PayPalCommerceSettings settings)
         {
+            _languageService = languageService;
             _localizationService = localizationService;
             _settingService = settingService;
             _httpClient = httpClient;
@@ -54,9 +59,12 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Data
             if (!Schema.Table(nameof(PayPalToken)).Exists())
                 Create.TableFor<PayPalToken>();
 
-            var (languageId, languages) = this.GetLanguageData();
+            var languages = _languageService.GetAllLanguagesAsync(true).Result;
+            var languageId = languages
+                .FirstOrDefault(lang => lang.UniqueSeoCode == new CultureInfo(NopCommonDefaults.DefaultLanguageCulture).TwoLetterISOLanguageName)
+                ?.Id;
 
-            _localizationService.AddOrUpdateLocaleResource(new Dictionary<string, string>
+            _localizationService.AddOrUpdateLocaleResourceAsync(new Dictionary<string, string>
             {
                 ["Enums.Nop.Plugin.Payments.PayPalCommerce.Domain.ButtonPlacement.Cart"] = "Shopping cart",
                 ["Enums.Nop.Plugin.Payments.PayPalCommerce.Domain.ButtonPlacement.Product"] = "Product",
@@ -70,11 +78,14 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Data
                 ["Plugins.Payments.PayPalCommerce.Card.Prefix"] = "Pay by",
                 ["Plugins.Payments.PayPalCommerce.Card.Save"] = "Save your card",
                 ["Plugins.Payments.PayPalCommerce.Configuration"] = "Configuration",
+                ["Plugins.Payments.PayPalCommerce.Fields.ClientId.Required"] = "Client ID is required",
                 ["Plugins.Payments.PayPalCommerce.Fields.CustomerAuthenticationRequired"] = "Use 3D Secure",
                 ["Plugins.Payments.PayPalCommerce.Fields.CustomerAuthenticationRequired.Hint"] = "3D Secure enables you to authenticate card holders through card issuers. It reduces the likelihood of fraud when you use supported cards and improves transaction performance. A successful 3D Secure authentication can shift liability for chargebacks due to fraud from you to the card issuer.",
                 ["Plugins.Payments.PayPalCommerce.Fields.MerchantId"] = "Merchant ID",
                 ["Plugins.Payments.PayPalCommerce.Fields.MerchantId.Hint"] = "PayPal account ID of the merchant.",
                 ["Plugins.Payments.PayPalCommerce.Fields.MerchantId.Required"] = "Merchant ID is required",
+                ["Plugins.Payments.PayPalCommerce.Fields.SecretKey.Required"] = "Secret is required",
+                ["Plugins.Payments.PayPalCommerce.Fields.SetCredentialsManually"] = "Specify API credentials manually",
                 ["Plugins.Payments.PayPalCommerce.Fields.SetCredentialsManually.Hint"] = "Determine whether to manually set the credentials (for example, there is already the REST API application created, or if you want to use the sandbox mode).",
                 ["Plugins.Payments.PayPalCommerce.Fields.SkipOrderConfirmPage"] = "Skip 'Confirm Order' page",
                 ["Plugins.Payments.PayPalCommerce.Fields.SkipOrderConfirmPage.Hint"] = "Determine whether to skip the 'Confirm Order' step during checkout so that after approving the payment on PayPal site, customers will redirected directly to the 'Order Completed' page.",
@@ -116,54 +127,54 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Data
                 ["Plugins.Payments.PayPalCommerce.PayLater"] = "Pay Later",
                 ["Plugins.Payments.PayPalCommerce.Shipment.Carrier"] = "Carrier",
                 ["Plugins.Payments.PayPalCommerce.Shipment.Carrier.Hint"] = "Specify the carrier for the shipment (e.g. UPS or FEDEX_UK, see allowed values on PayPal site).",
-            }, languageId);
+            }, languageId).Wait();
 
-            if (!_settingService.SettingExists(_settings, settings => settings.MerchantId))
+            if (!_settingService.SettingExistsAsync(_settings, settings => settings.MerchantId).Result)
                 _settings.MerchantId = null;
 
-            if (!_settingService.SettingExists(_settings, settings => settings.UseCardFields))
+            if (!_settingService.SettingExistsAsync(_settings, settings => settings.UseCardFields).Result)
                 _settings.UseCardFields = false;
 
-            if (!_settingService.SettingExists(_settings, settings => settings.CustomerAuthenticationRequired))
+            if (!_settingService.SettingExistsAsync(_settings, settings => settings.CustomerAuthenticationRequired).Result)
                 _settings.CustomerAuthenticationRequired = true;
 
-            if (!_settingService.SettingExists(_settings, settings => settings.UseApplePay))
+            if (!_settingService.SettingExistsAsync(_settings, settings => settings.UseApplePay).Result)
                 _settings.UseApplePay = false;
 
-            if (!_settingService.SettingExists(_settings, settings => settings.UseGooglePay))
+            if (!_settingService.SettingExistsAsync(_settings, settings => settings.UseGooglePay).Result)
                 _settings.UseGooglePay = false;
 
-            if (!_settingService.SettingExists(_settings, settings => settings.UseAlternativePayments))
+            if (!_settingService.SettingExistsAsync(_settings, settings => settings.UseAlternativePayments).Result)
                 _settings.UseAlternativePayments = false;
 
-            if (!_settingService.SettingExists(_settings, settings => settings.UseVault))
+            if (!_settingService.SettingExistsAsync(_settings, settings => settings.UseVault).Result)
                 _settings.UseVault = false;
 
-            if (!_settingService.SettingExists(_settings, settings => settings.SkipOrderConfirmPage))
+            if (!_settingService.SettingExistsAsync(_settings, settings => settings.SkipOrderConfirmPage).Result)
                 _settings.SkipOrderConfirmPage = false;
 
-            if (!_settingService.SettingExists(_settings, settings => settings.UseShipmentTracking))
+            if (!_settingService.SettingExistsAsync(_settings, settings => settings.UseShipmentTracking).Result)
                 _settings.UseShipmentTracking = false;
 
-            if (!_settingService.SettingExists(_settings, settings => settings.DisplayButtonsOnPaymentMethod))
+            if (!_settingService.SettingExistsAsync(_settings, settings => settings.DisplayButtonsOnPaymentMethod).Result)
                 _settings.DisplayButtonsOnPaymentMethod = true;
 
-            if (!_settingService.SettingExists(_settings, settings => settings.HideCheckoutButton))
+            if (!_settingService.SettingExistsAsync(_settings, settings => settings.HideCheckoutButton).Result)
                 _settings.HideCheckoutButton = false;
 
-            if (!_settingService.SettingExists(_settings, settings => settings.ImmediatePaymentRequired))
+            if (!_settingService.SettingExistsAsync(_settings, settings => settings.ImmediatePaymentRequired).Result)
                 _settings.ImmediatePaymentRequired = false;
 
-            if (!_settingService.SettingExists(_settings, settings => settings.OrderValidityInterval))
+            if (!_settingService.SettingExistsAsync(_settings, settings => settings.OrderValidityInterval).Result)
                 _settings.OrderValidityInterval = 300;
 
-            if (!_settingService.SettingExists(_settings, settings => settings.ConfiguratorSupported))
+            if (!_settingService.SettingExistsAsync(_settings, settings => settings.ConfiguratorSupported).Result)
                 _settings.ConfiguratorSupported = false;
 
-            if (!_settingService.SettingExists(_settings, settings => settings.PayLaterConfig))
+            if (!_settingService.SettingExistsAsync(_settings, settings => settings.PayLaterConfig).Result)
                 _settings.PayLaterConfig = null;
 
-            if (!_settingService.SettingExists(_settings, settings => settings.MerchantIdRequired))
+            if (!_settingService.SettingExistsAsync(_settings, settings => settings.MerchantIdRequired).Result)
                 _settings.MerchantIdRequired = false;
 
             try
@@ -179,7 +190,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Data
             }
             catch { }
 
-            _settingService.SaveSetting(_settings);
+            _settingService.SaveSettingAsync(_settings).Wait();
         }
 
         /// <summary>

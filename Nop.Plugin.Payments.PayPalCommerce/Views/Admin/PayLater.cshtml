@@ -5,7 +5,7 @@
     NopHtml.SetActiveMenuItemSystemName($"{PayPalCommerceDefaults.SystemName} Pay Later");
 }
 
-@await Component.InvokeAsync(typeof(StoreScopeConfigurationViewComponent))
+@await Component.InvokeAsync("StoreScopeConfiguration")
 
 <script src="@PayPalCommerceDefaults.MerchantConfiguratorScriptUrl" defer></script>
 

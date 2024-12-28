@@ -14,6 +14,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Components.Public
     /// <summary>
     /// Represents the view component to display Pay Later messages in the public store
     /// </summary>
+    [ViewComponent(Name = PayPalCommerceDefaults.MESSAGES_VIEW_COMPONENT_NAME)]
     public class MessagesViewComponent : NopViewComponent
     {
         #region Fields

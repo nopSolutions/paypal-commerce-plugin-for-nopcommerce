@@ -6,6 +6,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Components.Public
     /// <summary>
     /// Represents the view component to display payment info in the public store
     /// </summary>
+    [ViewComponent(Name = PayPalCommerceDefaults.PAYMENT_INFO_VIEW_COMPONENT_NAME)]
     public class PaymentInfoViewComponent : NopViewComponent
     {
         #region Methods

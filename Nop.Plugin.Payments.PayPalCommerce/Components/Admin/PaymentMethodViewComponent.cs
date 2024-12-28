@@ -9,6 +9,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Components.Admin
     /// <summary>
     /// Represents the view component to display PayPal on the payment methods page in the admin area
     /// </summary>
+    [ViewComponent(Name = PayPalCommerceDefaults.PAYMENT_METHOD_VIEW_COMPONENT_NAME)]
     public class PaymentMethodViewComponent : NopViewComponent
     {
         #region Fields

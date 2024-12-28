@@ -13,6 +13,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Components.Admin
     /// <summary>
     /// Represents the view component to render an additional input on the shipment details page in the admin area
     /// </summary>
+    [ViewComponent(Name = PayPalCommerceDefaults.SHIPMENT_CARRIER_VIEW_COMPONENT_NAME)]
     public class ShipmentCarrierViewComponent : NopViewComponent
     {
         #region Fields

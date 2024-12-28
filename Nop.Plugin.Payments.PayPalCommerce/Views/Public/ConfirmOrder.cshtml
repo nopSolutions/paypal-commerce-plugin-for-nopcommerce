@@ -10,7 +10,7 @@
         <h1>@T("Checkout.ConfirmYourOrder")</h1>
     </div>
     <div class="page-body checkout-data">
-        @await Component.InvokeAsync(typeof(WidgetViewComponent), new { widgetZone = PublicWidgetZones.CheckoutConfirmTop, additionalData = Model })
+        @await Component.InvokeAsync("Widget", new { widgetZone = PublicWidgetZones.CheckoutConfirmTop, additionalData = Model })
         <div class="section confirm-order">
             <form asp-controller="PayPalCommercePublic" asp-action="ConfirmOrderPost" method="post" id="confirm-order-form">
                 <input asp-for="OrderId" type="hidden" />
@@ -68,7 +68,7 @@
                             }
                             else
                             {
-                                <a class="read" id="read-terms" href="@Url.RouteTopicUrl("conditionsofuse")">@T("Checkout.TermsOfService.Read")</a>
+                                <a class="read" id="read-terms" href="@Url.RouteUrl("Topic", new { SeName = await Html.GetTopicSeNameAsync("conditionsofuse") })">@T("Checkout.TermsOfService.Read")</a>
                             }
                         </div>
                     }
@@ -83,10 +83,6 @@
                             }, 0);
                         });
                     </script>
-                    if (Model.DisplayCaptcha)
-                    {
-                        <nop-captcha />
-                    }
                 }
                 @if (Model.Warnings.Any())
                 {
@@ -101,9 +97,9 @@
                 }
             </form>
         </div>
-        @await Component.InvokeAsync(typeof(WidgetViewComponent), new { widgetZone = PublicWidgetZones.CheckoutConfirmBottom, additionalData = Model })
+        @await Component.InvokeAsync("Widget", new { widgetZone = PublicWidgetZones.CheckoutConfirmBottom, additionalData = Model })
         <div class="section order-summary">
-            @await Component.InvokeAsync(typeof(OrderSummaryViewComponent), new { prepareAndDisplayOrderReviewData = true })
+            @await Component.InvokeAsync("OrderSummary", new { prepareAndDisplayOrderReviewData = true })
         </div>
     </div>
 </div>

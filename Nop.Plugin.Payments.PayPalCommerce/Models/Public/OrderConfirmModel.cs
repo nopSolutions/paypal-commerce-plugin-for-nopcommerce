@@ -19,8 +19,6 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Models.Public
 
         public string MinOrderTotalWarning { get; set; }
 
-        public bool DisplayCaptcha { get; set; }
-
         public IList<string> Warnings { get; set; } = new List<string>();
 
         #endregion

@@ -11,8 +11,6 @@ using Nop.Core;
 using Nop.Core.Domain.Cms;
 using Nop.Core.Domain.Orders;
 using Nop.Core.Domain.Payments;
-using Nop.Plugin.Payments.PayPalCommerce.Components.Admin;
-using Nop.Plugin.Payments.PayPalCommerce.Components.Public;
 using Nop.Plugin.Payments.PayPalCommerce.Domain;
 using Nop.Plugin.Payments.PayPalCommerce.Services;
 using Nop.Services.Cms;
@@ -270,11 +268,12 @@ namespace Nop.Plugin.Payments.PayPalCommerce
         }
 
         /// <summary>
-        /// Gets a view component for displaying plugin in public store ("payment info" checkout step)
+        /// Gets a name of a view component for displaying plugin in public store ("payment info" checkout step)
         /// </summary>
-        public Type GetPublicViewComponent()
+        /// <returns>View component name</returns>
+        public string GetPublicViewComponentName()
         {
-            return typeof(PaymentInfoViewComponent);
+            return PayPalCommerceDefaults.PAYMENT_INFO_VIEW_COMPONENT_NAME;
         }
 
         /// <summary>
@@ -300,29 +299,29 @@ namespace Nop.Plugin.Payments.PayPalCommerce
         }
 
         /// <summary>
-        /// Gets a type of a view component for displaying widget
+        /// Gets a name of a view component for displaying widget
         /// </summary>
         /// <param name="widgetZone">Name of the widget zone</param>
-        /// <returns>View component type</returns>
-        public Type GetWidgetViewComponent(string widgetZone)
+        /// <returns>View component name</returns>
+        public string GetWidgetViewComponentName(string widgetZone)
         {
             if (widgetZone is null)
                 throw new ArgumentNullException(nameof(widgetZone));
 
             if (widgetZone.Equals(PublicWidgetZones.ProductDetailsAddInfo) || widgetZone.Equals(PublicWidgetZones.OrderSummaryContentBefore))
-                return typeof(ButtonsViewComponent);
+                return PayPalCommerceDefaults.BUTTONS_VIEW_COMPONENT_NAME;
 
             if (widgetZone.Equals(PublicWidgetZones.HeaderLinksBefore) || widgetZone.Equals(PublicWidgetZones.Footer))
-                return typeof(LogoViewComponent);
+                return PayPalCommerceDefaults.LOGO_VIEW_COMPONENT_NAME;
 
             if (widgetZone.Equals(PublicWidgetZones.OrderSummaryTotals))
-                return typeof(MessagesViewComponent);
+                return PayPalCommerceDefaults.MESSAGES_VIEW_COMPONENT_NAME;
 
             if (widgetZone.Equals(AdminWidgetZones.OrderShipmentDetailsButtons) || widgetZone.Equals(AdminWidgetZones.OrderShipmentAddButtons))
-                return typeof(ShipmentCarrierViewComponent);
+                return PayPalCommerceDefaults.SHIPMENT_CARRIER_VIEW_COMPONENT_NAME;
 
             if (widgetZone.Equals(AdminWidgetZones.PaymentMethodListTop))
-                return typeof(PaymentMethodViewComponent);
+                return PayPalCommerceDefaults.PAYMENT_METHOD_VIEW_COMPONENT_NAME;
 
             return null;
         }

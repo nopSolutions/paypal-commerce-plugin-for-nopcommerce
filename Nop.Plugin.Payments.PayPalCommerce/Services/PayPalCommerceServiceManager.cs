@@ -45,7 +45,6 @@ using Nop.Services.Shipping;
 using Nop.Services.Shipping.Pickup;
 using Nop.Services.Stores;
 using Nop.Services.Tax;
-using Nop.Web.Framework.Mvc.Routing;
 using Address = Nop.Plugin.Payments.PayPalCommerce.Services.Api.Models.Address;
 using NopAddress = Nop.Core.Domain.Common.Address;
 using NopOrder = Nop.Core.Domain.Orders.Order;
@@ -73,7 +72,6 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         private readonly IGenericAttributeService _genericAttributeService;
         private readonly ILocalizationService _localizationService;
         private readonly ILogger _logger;
-        private readonly INopUrlHelper _nopUrlHelper;
         private readonly IOrderProcessingService _orderProcessingService;
         private readonly IOrderService _orderService;
         private readonly IOrderTotalCalculationService _orderTotalCalculationService;
@@ -114,7 +112,6 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             IGenericAttributeService genericAttributeService,
             ILocalizationService localizationService,
             ILogger logger,
-            INopUrlHelper nopUrlHelper,
             IOrderProcessingService orderProcessingService,
             IOrderService orderService,
             IOrderTotalCalculationService orderTotalCalculationService,
@@ -151,7 +148,6 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             _genericAttributeService = genericAttributeService;
             _localizationService = localizationService;
             _logger = logger;
-            _nopUrlHelper = nopUrlHelper;
             _orderProcessingService = orderProcessingService;
             _orderService = orderService;
             _orderTotalCalculationService = orderTotalCalculationService;
@@ -239,7 +235,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             {
                 ButtonPlacement.Cart => subTotal,
                 ButtonPlacement.Product when product is not null
-                    => (await _priceCalculationService.GetFinalPriceAsync(product, customer, store)).finalPrice, //+ subTotal,
+                    => (await _priceCalculationService.GetFinalPriceAsync(product, customer)).finalPrice, //+ subTotal,
                 ButtonPlacement.PaymentMethod
                     => (await _orderTotalCalculationService.GetShoppingCartTotalAsync(cart, null, usePaymentMethodAdditionalFee: false))
                         .shoppingCartTotal ?? subTotal,
@@ -325,29 +321,39 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             var customer = details.Customer;
             var address = details.BillingAddress;
             var isPaymentMethodPage = details.Placement == ButtonPlacement.PaymentMethod;
+            var firstName = await _genericAttributeService.GetAttributeAsync<string>(customer, NopCustomerDefaults.FirstNameAttribute);
+            var lastName = await _genericAttributeService.GetAttributeAsync<string>(customer, NopCustomerDefaults.LastNameAttribute);
+            var dateOfBirth = await _genericAttributeService.GetAttributeAsync<string>(customer, NopCustomerDefaults.DateOfBirthAttribute);
+            var stateId = await _genericAttributeService.GetAttributeAsync<int>(customer, NopCustomerDefaults.StateProvinceIdAttribute);
+            var countryId = await _genericAttributeService.GetAttributeAsync<int>(customer, NopCustomerDefaults.CountryIdAttribute);
+            var line1 = await _genericAttributeService.GetAttributeAsync<string>(customer, NopCustomerDefaults.StreetAddressAttribute);
+            var line2 = await _genericAttributeService.GetAttributeAsync<string>(customer, NopCustomerDefaults.StreetAddress2Attribute);
+            var city = await _genericAttributeService.GetAttributeAsync<string>(customer, NopCustomerDefaults.CityAttribute);
+            var zip = await _genericAttributeService.GetAttributeAsync<string>(customer, NopCustomerDefaults.ZipPostalCodeAttribute);
 
             var email = CommonHelper.EnsureMaximumLength(isPaymentMethodPage ? address.Email : customer.Email, 254);
             var name = new Name
             {
-                GivenName = CommonHelper.EnsureMaximumLength(isPaymentMethodPage ? address.FirstName : customer.FirstName, 140),
-                Surname = CommonHelper.EnsureMaximumLength(isPaymentMethodPage ? address.LastName : customer.LastName, 140)
+                GivenName = CommonHelper.EnsureMaximumLength(isPaymentMethodPage ? address.FirstName : firstName, 140),
+                Surname = CommonHelper.EnsureMaximumLength(isPaymentMethodPage ? address.LastName : lastName, 140)
             };
             //phone number format is unpredictable
+            //var customerPhone = await _genericAttributeService.GetAttributeAsync<string>(customer, NopCustomerDefaults.PhoneAttribute);
             //var phone = isPaymentMethodPage
             //    ? (!string.IsNullOrEmpty(address.PhoneNumber) ? new Phone { PhoneNumber = new() { NationalNumber = CommonHelper.EnsureMaximumLength(CommonHelper.EnsureNumericOnly(address.PhoneNumber), 14) } } : null)
-            //    : !string.IsNullOrEmpty(customer.Phone) ? new Phone { PhoneNumber = new() { NationalNumber = CommonHelper.EnsureMaximumLength(CommonHelper.EnsureNumericOnly(customer.Phone), 14) } } : null;
-            var birthDate = customer.DateOfBirth?.ToString("yyyy-MM-dd");
-            var country = await _countryService.GetCountryByIdAsync(isPaymentMethodPage ? address.CountryId ?? 0 : customer.CountryId);
+            //    : !string.IsNullOrEmpty(customerPhone) ? new Phone { PhoneNumber = new() { NationalNumber = CommonHelper.EnsureMaximumLength(CommonHelper.EnsureNumericOnly(customerPhone), 14) } } : null;
+            var birthDate = DateTime.TryParse(dateOfBirth, out var dateOfBirthValue) ? dateOfBirthValue.ToString("yyyy-MM-dd") : null;
+            var country = await _countryService.GetCountryByIdAsync(isPaymentMethodPage ? address.CountryId ?? 0 : countryId);
             var state = await _stateProvinceService
-                .GetStateProvinceByIdAsync(isPaymentMethodPage ? address.StateProvinceId ?? 0 : customer.StateProvinceId);
+                .GetStateProvinceByIdAsync(isPaymentMethodPage ? address.StateProvinceId ?? 0 : stateId);
             var billingAddress = new Address
             {
-                AddressLine1 = CommonHelper.EnsureMaximumLength(isPaymentMethodPage ? address.Address1 : customer.StreetAddress, 300),
-                AddressLine2 = CommonHelper.EnsureMaximumLength(isPaymentMethodPage ? address.Address2 : customer.StreetAddress2, 300),
-                AdminArea2 = CommonHelper.EnsureMaximumLength(isPaymentMethodPage ? address.City : customer.City, 120),
+                AddressLine1 = CommonHelper.EnsureMaximumLength(isPaymentMethodPage ? address.Address1 : line1, 300),
+                AddressLine2 = CommonHelper.EnsureMaximumLength(isPaymentMethodPage ? address.Address2 : line2, 300),
+                AdminArea2 = CommonHelper.EnsureMaximumLength(isPaymentMethodPage ? address.City : city, 120),
                 AdminArea1 = CommonHelper.EnsureMaximumLength(state?.Abbreviation, 300),
                 CountryCode = CommonHelper.EnsureMaximumLength(country?.TwoLetterIsoCode, 2),
-                PostalCode = CommonHelper.EnsureMaximumLength(isPaymentMethodPage ? address.ZipPostalCode : customer.ZipPostalCode, 60)
+                PostalCode = CommonHelper.EnsureMaximumLength(isPaymentMethodPage ? address.ZipPostalCode : zip, 60)
             };
 
             //country is required
@@ -368,12 +374,13 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         private async Task<List<Item>> PrepareOrderItemsAsync(CartDetails details)
         {
             //cart items
+            var urlHelper = _urlHelperFactory.GetUrlHelper(_actionContextAccessor.ActionContext);
             var items = await details.Cart.SelectAwait(async item =>
             {
                 var product = await _productService.GetProductByIdAsync(item.ProductId);
                 var sku = await _productService.FormatSkuAsync(product, item.AttributesXml);
                 var seName = await _urlRecordService.GetSeNameAsync(product);
-                var url = await _nopUrlHelper.RouteGenericUrlAsync<Product>(new { SeName = seName }, _webHelper.GetCurrentRequestProtocol());
+                var url = urlHelper.RouteUrl("Product", new { SeName = seName }, _webHelper.GetCurrentRequestProtocol());
                 var picture = await _pictureService.GetProductPictureAsync(product, item.AttributesXml);
                 var (imageUrl, _) = await _pictureService.GetPictureUrlAsync(picture);
 
@@ -528,7 +535,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
 
             var shippingAddress = details.ShippingAddress;
             var fullName = shippingAddress is not null && !details.IsPickup
-                ? await _customerService.GetCustomerFullNameAsync(new() { FirstName = shippingAddress.FirstName, LastName = shippingAddress.LastName })
+                ? $"{shippingAddress.FirstName} {shippingAddress.LastName}"
                 : null;
             if (string.IsNullOrEmpty(fullName))
                 fullName = await _customerService.GetCustomerFullNameAsync(details.Customer);
@@ -659,7 +666,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 if (pickupPointProviders.Any())
                 {
                     var pickupPointsResponse = await _shippingService
-                        .GetPickupPointsAsync(details.Cart, details.BillingAddress, details.Customer, storeId: details.Store.Id);
+                        .GetPickupPointsAsync(details.Customer.BillingAddressId ?? 0, details.Customer, storeId: details.Store.Id);
                     if (pickupPointsResponse.Success)
                     {
                         shippingOptions.AddRange(await pickupPointsResponse.PickupPoints.SelectAwait(async point => new NopShippingOption
@@ -1077,7 +1084,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 var address = await _customerService.GetCustomerBillingAddressAsync(customer);
                 var email = address is not null ? address.Email : customer.Email;
                 var fullName = address is not null
-                    ? await _customerService.GetCustomerFullNameAsync(new() { FirstName = address.FirstName, LastName = address.LastName })
+                    ? $"{address.FirstName} {address.LastName}"
                     : await _customerService.GetCustomerFullNameAsync(customer);
 
                 //prepare script components
@@ -1918,14 +1925,16 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 //or update billing details and redirect customer to the confirmation page
                 if (order.Payer is not null)
                 {
+                    var firstName = await _genericAttributeService.GetAttributeAsync<string>(customer, NopCustomerDefaults.FirstNameAttribute);
+                    var lastName = await _genericAttributeService.GetAttributeAsync<string>(customer, NopCustomerDefaults.LastNameAttribute);
                     var billingCountry = await _countryService.GetCountryByTwoLetterIsoCodeAsync(order.Payer.Address?.CountryCode);
                     var billingState = await _stateProvinceService
                         .GetStateProvinceByAbbreviationAsync(order.Payer.Address?.AdminArea1, billingCountry?.Id);
                     var billingAddress = await PrepareCustomerAddressAsync(customer, new()
                     {
                         Email = order.Payer.EmailAddress ?? customer.Email,
-                        FirstName = order.Payer.Name?.GivenName ?? customer.FirstName,
-                        LastName = order.Payer.Name?.Surname ?? customer.LastName,
+                        FirstName = order.Payer.Name?.GivenName ?? firstName,
+                        LastName = order.Payer.Name?.Surname ?? lastName,
                         Address1 = order.Payer.Address?.AddressLine1,
                         Address2 = order.Payer.Address?.AddressLine2,
                         City = order.Payer.Address?.AdminArea2,
@@ -2272,11 +2281,13 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 var items = await PrepareOrderItemsAsync(details);
                 var orderAmount = await PrepareOrderMoneyAsync(details, items);
 
+                var firstName = await _genericAttributeService.GetAttributeAsync<string>(customer, NopCustomerDefaults.FirstNameAttribute);
+                var lastName = await _genericAttributeService.GetAttributeAsync<string>(customer, NopCustomerDefaults.LastNameAttribute);
                 var shipping = await PrepareShippingDetailsAsync(details, shippingOption?.Name, true);
                 var shippingContact = new Contact
                 {
-                    FirstName = shippingAddress is not null && !pickupInStore ? shippingAddress.FirstName : customer.FirstName,
-                    LastName = shippingAddress is not null && !pickupInStore ? shippingAddress.LastName : customer.LastName,
+                    FirstName = shippingAddress is not null && !pickupInStore ? shippingAddress.FirstName : firstName,
+                    LastName = shippingAddress is not null && !pickupInStore ? shippingAddress.LastName : lastName,
                     AddressLines = new() { shipping.Address?.AddressLine1, shipping.Address?.AddressLine2 },
                     City = shipping.Address?.AdminArea2,
                     State = shipping.Address?.AdminArea1,
@@ -2379,7 +2390,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 var items = await PrepareOrderItemsAsync(details);
                 var orderAmount = await PrepareOrderMoneyAsync(details, items);
 
-                var country = await _countryService.GetCountryByIdAsync(billingAddress?.CountryId ?? customer.CountryId);
+                var countryId = await _genericAttributeService.GetAttributeAsync<int>(customer, NopCustomerDefaults.CountryIdAttribute);
+                var country = await _countryService.GetCountryByIdAsync(billingAddress?.CountryId ?? countryId);
                 var shippingIsRequired = await _shoppingCartService.ShoppingCartRequiresShippingAsync(cart);
 
                 return (orderAmount, country?.TwoLetterIsoCode ?? "US", shippingIsRequired);
@@ -2608,6 +2620,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     throw new NopException($"Unable to assign tracking information to orders with the payment in {order.Status} status");
                 }
 
+                var urlHelper = _urlHelperFactory.GetUrlHelper(_actionContextAccessor.ActionContext);
                 var shipmentItems = await _shipmentService.GetShipmentItemsByShipmentIdAsync(shipment.Id);
                 var items = await shipmentItems.SelectAwait(async shipmentItem =>
                 {
@@ -2615,7 +2628,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     var product = await _productService.GetProductByIdAsync(orderItem.ProductId);
                     var sku = await _productService.FormatSkuAsync(product, orderItem.AttributesXml);
                     var seName = await _urlRecordService.GetSeNameAsync(product);
-                    var url = await _nopUrlHelper.RouteGenericUrlAsync<Product>(new { SeName = seName }, _webHelper.GetCurrentRequestProtocol());
+                    var url = urlHelper.RouteUrl("Product", new { SeName = seName }, _webHelper.GetCurrentRequestProtocol());
                     var picture = await _pictureService.GetProductPictureAsync(product, orderItem.AttributesXml);
                     var (imageUrl, _) = await _pictureService.GetPictureUrlAsync(picture);
 

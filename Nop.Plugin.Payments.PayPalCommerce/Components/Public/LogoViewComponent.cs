@@ -11,6 +11,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Components.Public
     /// <summary>
     /// Represents the view component to display PayPal logo in the public store
     /// </summary>
+    [ViewComponent(Name = PayPalCommerceDefaults.LOGO_VIEW_COMPONENT_NAME)]
     public class LogoViewComponent : NopViewComponent
     {
         #region Fields
