@@ -1,13 +1,28 @@
 ﻿using FluentMigrator;
-using Nop.Data.Extensions;
 using Nop.Data.Migrations;
 using Nop.Plugin.Payments.PayPalCommerce.Domain;
 
 namespace Nop.Plugin.Payments.PayPalCommerce.Data
 {
-    [NopMigration("2024-06-06 00:00:00", "Payments.PayPalCommerce base schema", MigrationProcessType.Installation)]
+    [SkipMigrationOnUpdate]
+    [NopMigration("2024-06-06 00:00:00", "Payments.PayPalCommerce base schema")]
     public class SchemaMigration : AutoReversingMigration
     {
+        #region Fields
+
+        protected IMigrationManager _migrationManager;
+
+        #endregion
+
+        #region Ctor
+
+        public SchemaMigration(IMigrationManager migrationManager)
+        {
+            _migrationManager = migrationManager;
+        }
+
+        #endregion
+
         #region Methods
 
         /// <summary>
@@ -15,7 +30,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Data
         /// </summary>
         public override void Up()
         {
-            Create.TableFor<PayPalToken>();
+            _migrationManager.BuildTable<PayPalToken>(Create);
         }
 
         #endregion

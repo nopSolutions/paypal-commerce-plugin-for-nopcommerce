@@ -443,7 +443,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce
                 await _settingService.SaveSettingAsync(_widgetSettings);
             }
 
-            await _localizationService.AddOrUpdateLocaleResourceAsync(new Dictionary<string, string>
+            await _localizationService.AddLocaleResourceAsync(new Dictionary<string, string>
             {
                 ["Enums.Nop.Plugin.Payments.PayPalCommerce.Domain.ButtonPlacement.Cart"] = "Shopping cart",
                 ["Enums.Nop.Plugin.Payments.PayPalCommerce.Domain.ButtonPlacement.Product"] = "Product",

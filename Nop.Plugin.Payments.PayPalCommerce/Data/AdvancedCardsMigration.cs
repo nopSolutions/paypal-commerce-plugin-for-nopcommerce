@@ -2,8 +2,8 @@
 using System.Globalization;
 using System.Linq;
 using FluentMigrator;
+using Nop.Core.Infrastructure;
 using Nop.Data;
-using Nop.Data.Extensions;
 using Nop.Data.Migrations;
 using Nop.Plugin.Payments.PayPalCommerce.Domain;
 using Nop.Plugin.Payments.PayPalCommerce.Services;
@@ -13,35 +13,21 @@ using Nop.Services.Localization;
 
 namespace Nop.Plugin.Payments.PayPalCommerce.Data
 {
-    [NopMigration("2024-06-06 00:00:01", "Payments.PayPalCommerce 4.70.10. Advanced cards", MigrationProcessType.Update)]
+    [SkipMigrationOnInstall]
+    [NopMigration("2024-06-06 00:00:01", "Payments.PayPalCommerce 4.70.10. Advanced cards")]
     public class AdvancedCardsMigration : MigrationBase
     {
         #region Fields
 
-        private readonly ILanguageService _languageService;
-        private readonly ILocalizationService _localizationService;
-        private readonly ISettingService _settingService;
-        private readonly OnboardingHttpClient _httpClient;
-        private readonly PayPalCommerceServiceManager _serviceManager;
-        private readonly PayPalCommerceSettings _settings;
+        private readonly IMigrationManager _migrationManager;
 
         #endregion
 
         #region Ctor
 
-        public AdvancedCardsMigration(ILanguageService languageService,
-            ILocalizationService localizationService,
-            ISettingService settingService,
-            OnboardingHttpClient httpClient,
-            PayPalCommerceServiceManager serviceManager,
-            PayPalCommerceSettings settings)
+        public AdvancedCardsMigration(IMigrationManager migrationManager)
         {
-            _languageService = languageService;
-            _localizationService = localizationService;
-            _settingService = settingService;
-            _httpClient = httpClient;
-            _serviceManager = serviceManager;
-            _settings = settings;
+            _migrationManager = migrationManager;
         }
 
         #endregion
@@ -57,14 +43,19 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Data
                 return;
 
             if (!Schema.Table(nameof(PayPalToken)).Exists())
-                Create.TableFor<PayPalToken>();
+                _migrationManager.BuildTable<PayPalToken>(Create);
 
-            var languages = _languageService.GetAllLanguagesAsync(true).Result;
+            var languageService = EngineContext.Current.Resolve<ILanguageService>();
+            var localizationService = EngineContext.Current.Resolve<ILocalizationService>();
+            var settingService = EngineContext.Current.Resolve<ISettingService>();
+            var settings = settingService.LoadSettingAsync<PayPalCommerceSettings>().Result;
+
+            var languages = languageService.GetAllLanguagesAsync(true).Result;
             var languageId = languages
                 .FirstOrDefault(lang => lang.UniqueSeoCode == new CultureInfo(NopCommonDefaults.DefaultLanguageCulture).TwoLetterISOLanguageName)
                 ?.Id;
 
-            _localizationService.AddOrUpdateLocaleResourceAsync(new Dictionary<string, string>
+            localizationService.AddLocaleResourceAsync(new Dictionary<string, string>
             {
                 ["Enums.Nop.Plugin.Payments.PayPalCommerce.Domain.ButtonPlacement.Cart"] = "Shopping cart",
                 ["Enums.Nop.Plugin.Payments.PayPalCommerce.Domain.ButtonPlacement.Product"] = "Product",
@@ -129,68 +120,74 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Data
                 ["Plugins.Payments.PayPalCommerce.Shipment.Carrier.Hint"] = "Specify the carrier for the shipment (e.g. UPS or FEDEX_UK, see allowed values on PayPal site).",
             }, languageId).Wait();
 
-            if (!_settingService.SettingExistsAsync(_settings, settings => settings.MerchantId).Result)
-                _settings.MerchantId = null;
+            if (!settingService.SettingExistsAsync(settings, settings => settings.MerchantId).Result)
+                settings.MerchantId = null;
 
-            if (!_settingService.SettingExistsAsync(_settings, settings => settings.UseCardFields).Result)
-                _settings.UseCardFields = false;
+            if (!settingService.SettingExistsAsync(settings, settings => settings.UseCardFields).Result)
+                settings.UseCardFields = false;
 
-            if (!_settingService.SettingExistsAsync(_settings, settings => settings.CustomerAuthenticationRequired).Result)
-                _settings.CustomerAuthenticationRequired = true;
+            if (!settingService.SettingExistsAsync(settings, settings => settings.CustomerAuthenticationRequired).Result)
+                settings.CustomerAuthenticationRequired = true;
 
-            if (!_settingService.SettingExistsAsync(_settings, settings => settings.UseApplePay).Result)
-                _settings.UseApplePay = false;
+            if (!settingService.SettingExistsAsync(settings, settings => settings.UseApplePay).Result)
+                settings.UseApplePay = false;
 
-            if (!_settingService.SettingExistsAsync(_settings, settings => settings.UseGooglePay).Result)
-                _settings.UseGooglePay = false;
+            if (!settingService.SettingExistsAsync(settings, settings => settings.UseGooglePay).Result)
+                settings.UseGooglePay = false;
 
-            if (!_settingService.SettingExistsAsync(_settings, settings => settings.UseAlternativePayments).Result)
-                _settings.UseAlternativePayments = false;
+            if (!settingService.SettingExistsAsync(settings, settings => settings.UseAlternativePayments).Result)
+                settings.UseAlternativePayments = false;
 
-            if (!_settingService.SettingExistsAsync(_settings, settings => settings.UseVault).Result)
-                _settings.UseVault = false;
+            if (!settingService.SettingExistsAsync(settings, settings => settings.UseVault).Result)
+                settings.UseVault = false;
 
-            if (!_settingService.SettingExistsAsync(_settings, settings => settings.SkipOrderConfirmPage).Result)
-                _settings.SkipOrderConfirmPage = false;
+            if (!settingService.SettingExistsAsync(settings, settings => settings.SkipOrderConfirmPage).Result)
+                settings.SkipOrderConfirmPage = false;
 
-            if (!_settingService.SettingExistsAsync(_settings, settings => settings.UseShipmentTracking).Result)
-                _settings.UseShipmentTracking = false;
+            if (!settingService.SettingExistsAsync(settings, settings => settings.UseShipmentTracking).Result)
+                settings.UseShipmentTracking = false;
 
-            if (!_settingService.SettingExistsAsync(_settings, settings => settings.DisplayButtonsOnPaymentMethod).Result)
-                _settings.DisplayButtonsOnPaymentMethod = true;
+            if (!settingService.SettingExistsAsync(settings, settings => settings.DisplayButtonsOnPaymentMethod).Result)
+                settings.DisplayButtonsOnPaymentMethod = true;
 
-            if (!_settingService.SettingExistsAsync(_settings, settings => settings.HideCheckoutButton).Result)
-                _settings.HideCheckoutButton = false;
+            if (!settingService.SettingExistsAsync(settings, settings => settings.HideCheckoutButton).Result)
+                settings.HideCheckoutButton = false;
 
-            if (!_settingService.SettingExistsAsync(_settings, settings => settings.ImmediatePaymentRequired).Result)
-                _settings.ImmediatePaymentRequired = false;
+            if (!settingService.SettingExistsAsync(settings, settings => settings.ImmediatePaymentRequired).Result)
+                settings.ImmediatePaymentRequired = false;
 
-            if (!_settingService.SettingExistsAsync(_settings, settings => settings.OrderValidityInterval).Result)
-                _settings.OrderValidityInterval = 300;
+            if (!settingService.SettingExistsAsync(settings, settings => settings.OrderValidityInterval).Result)
+                settings.OrderValidityInterval = 300;
 
-            if (!_settingService.SettingExistsAsync(_settings, settings => settings.ConfiguratorSupported).Result)
-                _settings.ConfiguratorSupported = false;
+            if (!settingService.SettingExistsAsync(settings, settings => settings.ConfiguratorSupported).Result)
+                settings.ConfiguratorSupported = false;
 
-            if (!_settingService.SettingExistsAsync(_settings, settings => settings.PayLaterConfig).Result)
-                _settings.PayLaterConfig = null;
+            if (!settingService.SettingExistsAsync(settings, settings => settings.PayLaterConfig).Result)
+                settings.PayLaterConfig = null;
 
-            if (!_settingService.SettingExistsAsync(_settings, settings => settings.MerchantIdRequired).Result)
-                _settings.MerchantIdRequired = false;
+            if (!settingService.SettingExistsAsync(settings, settings => settings.MerchantIdRequired).Result)
+                settings.MerchantIdRequired = false;
 
             try
             {
-                if (_settings.SetCredentialsManually)
-                    _settings.MerchantIdRequired = true;
-                else if (!string.IsNullOrEmpty(_settings.MerchantGuid) && _serviceManager.IsActiveAsync(_settings).Result.Active)
+                if (settings.SetCredentialsManually)
+                    settings.MerchantIdRequired = true;
+                else if (!string.IsNullOrEmpty(settings.MerchantGuid))
                 {
-                    _settings.MerchantIdRequired = true;
-                    _settings.MerchantId = _httpClient.GetMerchantAsync(_settings.MerchantGuid).Result?.MerchantId;
-                    _settings.MerchantIdRequired = string.IsNullOrEmpty(_settings.MerchantId);
+                    var serviceManager = EngineContext.Current.Resolve<PayPalCommerceServiceManager>();
+                    if (serviceManager.IsActiveAsync(settings).Result.Active)
+                    {
+                        var httpClient = EngineContext.Current.Resolve<OnboardingHttpClient>();
+
+                        settings.MerchantIdRequired = true;
+                        settings.MerchantId = httpClient.GetMerchantAsync(settings.MerchantGuid).Result?.MerchantId;
+                        settings.MerchantIdRequired = string.IsNullOrEmpty(settings.MerchantId);
+                    }
                 }
             }
             catch { }
 
-            _settingService.SaveSettingAsync(_settings).Wait();
+            settingService.SaveSettingAsync(settings).Wait();
         }
 
         /// <summary>

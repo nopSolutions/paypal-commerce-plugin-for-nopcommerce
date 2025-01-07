@@ -503,7 +503,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
                 return AccessDeniedView();
 
             var storeId = model.StoreId;
-            (var settings, storeId) = await LoadSettingsAsync(storeId);
+            var (settings, storeIdTmp) = await LoadSettingsAsync(storeId);
+            storeId = storeIdTmp;
 
             if (!string.IsNullOrEmpty(settings.MerchantGuid))
             {
@@ -527,7 +528,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         public async Task<IActionResult> SignUp(AuthenticationModel model)
         {
             var storeId = model.StoreId;
-            (var settings, storeId) = await LoadSettingsAsync(storeId);
+            var (settings, storeIdTmp) = await LoadSettingsAsync(storeId);
+            storeId = storeIdTmp;
 
             //try to get credentials by authentication parameters
             var (credentials, _) = await _serviceManager.SignUpAsync(settings, model.AuthCode, model.SharedId);
@@ -595,22 +597,6 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
             _notificationService.SuccessNotification(accessRevokedMessage);
 
             return RedirectToAction("Configure");
-        }
-
-        public async Task<IActionResult> ChangeUseApplePay(bool enabled)
-        {
-            var message = string.Empty;
-            if (enabled)
-            {
-                if (!_appSettings.Get<CommonConfig>().ServeUnknownFileTypes)
-                {
-                    //this setting should be enabled for domain verification
-                    var locale = await _localizationService.GetResourceAsync("Plugins.Payments.PayPalCommerce.Fields.UseApplePay.Warning");
-                    message = string.Format(locale, Url.Action("AppSettings", "Setting"));
-                }
-            }
-
-            return Json(new { Result = message });
         }
 
         #endregion

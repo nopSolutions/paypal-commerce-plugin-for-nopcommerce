@@ -25,7 +25,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         IConsumer<CustomerPermanentlyDeleted>,
         IConsumer<ModelPreparedEvent<BaseNopModel>>,
         IConsumer<ModelReceivedEvent<BaseNopModel>>,
-        IConsumer<ShipmentCreatedEvent>,
+        IConsumer<EntityInsertedEvent<Shipment>>,
         IConsumer<EntityUpdatedEvent<Shipment>>,
         IConsumer<SystemWarningCreatedEvent>
     {
@@ -95,13 +95,12 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 return;
 
             //add a new menu item in the customer navigation
-            var orderItem = navigationModel.CustomerNavigationItems.FirstOrDefault(item => item.Tab == (int)CustomerNavigationEnum.Orders);
+            var orderItem = navigationModel.CustomerNavigationItems.FirstOrDefault(item => item.Tab == CustomerNavigationEnum.Orders);
             var position = navigationModel.CustomerNavigationItems.IndexOf(orderItem) + 1;
             navigationModel.CustomerNavigationItems.Insert(position, new()
             {
                 RouteName = PayPalCommerceDefaults.Route.PaymentTokens,
                 ItemClass = "paypal-payment-tokens",
-                Tab = PayPalCommerceDefaults.PaymentTokensMenuTab,
                 Title = await _localizationService.GetResourceAsync("Plugins.Payments.PayPalCommerce.PaymentTokens")
             });
         }
@@ -139,27 +138,27 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         }
 
         /// <summary>
-        /// Handle shipment created event
+        /// Handle shipment inserted event
         /// </summary>
         /// <param name="eventMessage">Event message</param>
         /// <returns>A task that represents the asynchronous operation</returns>
-        public async Task HandleEventAsync(ShipmentCreatedEvent eventMessage)
+        public async Task HandleEventAsync(EntityInsertedEvent<Shipment> eventMessage)
         {
             if (!PayPalCommerceServiceManager.IsConnected(_settings))
                 return;
 
-            if (!_settings.UseShipmentTracking || eventMessage.Shipment is null)
+            if (!_settings.UseShipmentTracking || eventMessage.Entity is null)
                 return;
 
             //move the saved data from context to the generic attribute
             if (_httpContextAccessor.HttpContext.Items.TryGetValue(PayPalCommerceDefaults.ShipmentCarrierAttribute, out var carrier))
             {
                 await _genericAttributeService
-                    .SaveAttributeAsync(eventMessage.Shipment, PayPalCommerceDefaults.ShipmentCarrierAttribute, carrier.ToString());
+                    .SaveAttributeAsync(eventMessage.Entity, PayPalCommerceDefaults.ShipmentCarrierAttribute, carrier.ToString());
             }
 
-            if (!string.IsNullOrEmpty(eventMessage.Shipment.TrackingNumber))
-                await _serviceManager.SetTrackingAsync(_settings, eventMessage.Shipment);
+            if (!string.IsNullOrEmpty(eventMessage.Entity.TrackingNumber))
+                await _serviceManager.SetTrackingAsync(_settings, eventMessage.Entity);
         }
 
         /// <summary>

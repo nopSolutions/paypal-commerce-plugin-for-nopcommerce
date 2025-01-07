@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="~/Plugins/Payments.PayPalCommerce/Content/styles.css" />
 @if (Model.LoadScript)
 {
-    <script asp-location="Auto" src="@PayPalCommerceDefaults.MerchantConfiguratorScriptUrl" defer></script>
+    <script src="@PayPalCommerceDefaults.MerchantConfiguratorScriptUrl" defer></script>
 }
 <div id="@paypalMessagesContainer" class="paypal-messages-container" style="display: none;"></div>
 

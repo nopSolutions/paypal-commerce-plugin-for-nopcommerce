@@ -676,7 +676,6 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                             Description = point.Description,
                             ShippingRateComputationMethodSystemName = point.ProviderSystemName,
                             IsPickupInStore = true,
-                            DisplayOrder = point.DisplayOrder,
                             TransitDays = point.TransitDays
                         }).ToListAsync());
                         pickupPoints.AddRange(pickupPointsResponse.PickupPoints);
@@ -694,11 +693,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             }
 
             //sort options
-            shippingOptions = (_shippingSettings.ShippingSorting switch
-            {
-                ShippingSortingEnum.ShippingCost => shippingOptions.OrderBy(option => option.Rate),
-                _ => shippingOptions.OrderBy(option => option.DisplayOrder)
-            }).ToList();
+            shippingOptions = shippingOptions.OrderBy(option => option.Rate).ToList();
 
             return (shippingOptions, pickupPoints);
         }

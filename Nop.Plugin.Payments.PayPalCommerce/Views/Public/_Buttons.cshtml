@@ -19,18 +19,18 @@
 }
 
 <link rel="stylesheet" href="~/Plugins/Payments.PayPalCommerce/Content/styles.css" />
-<script asp-location="Auto" src="@Model.Script.Url" data-page-type="@pageType" data-client-token="@Model.Script.ClientToken" data-user-id-token="@Model.Script.UserToken" data-partner-attribution-id="@PayPalCommerceDefaults.PartnerHeader.Value"></script>
+<script src="@Model.Script.Url" data-page-type="@pageType" data-client-token="@Model.Script.ClientToken" data-user-id-token="@Model.Script.UserToken" data-partner-attribution-id="@PayPalCommerceDefaults.PartnerHeader.Value"></script>
 @if (settings.UseApplePay && Model.Placement != ButtonPlacement.Product)
 {
-    <script asp-location="Auto" src="@PayPalCommerceDefaults.ApplePayScriptUrl"></script>
+    <script src="@PayPalCommerceDefaults.ApplePayScriptUrl"></script>
 }
 @if (settings.UseGooglePay)
 {
-    <script asp-location="Auto" src="@PayPalCommerceDefaults.GooglePayScriptUrl"></script>
+    <script src="@PayPalCommerceDefaults.GooglePayScriptUrl"></script>
 }
 @if (settings.UseSandbox || settings.ConfiguratorSupported)
 {
-    <script asp-location="Auto" src="@PayPalCommerceDefaults.MerchantConfiguratorScriptUrl" defer></script>
+    <script src="@PayPalCommerceDefaults.MerchantConfiguratorScriptUrl" defer></script>
 }
 
 <div id="@paypalButtonContainer" class="paypal-button-container"></div>

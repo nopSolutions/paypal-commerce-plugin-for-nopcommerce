@@ -2,7 +2,7 @@
 
 @{
     Layout = "_ConfigurePlugin";
-    NopHtml.SetActiveMenuItemSystemName($"{PayPalCommerceDefaults.SystemName} Configuration");
+    Html.SetActiveMenuItemSystemName($"{PayPalCommerceDefaults.SystemName} Configuration");
 
     var learnMore = "<p>Learn more about the PayPal Commerce plugin configuration <a href='https://docs.nopcommerce.com/getting-started/configure-payments/payment-methods/paypal-commerce.html' target='_blank'>here</a>.</p>";
 }
@@ -22,10 +22,8 @@
         if ($('#@Html.IdFor(model => model.UseSandbox)').length > 0) {
             $('#@Html.IdFor(model => model.UseSandbox)').change(toggleUseSandbox);
         }
-        $('#@Html.IdFor(model => model.UseApplePay)').change(toggleUseApplePay);
         toggleCredentials();
         toggleUseSandbox();
-        toggleUseApplePay();
     });
 
     function toggleCredentials() {
@@ -73,10 +71,6 @@
                 }
             }
         }
-    }
-
-    function toggleUseApplePay() {
-        warningValidation('@Url.Action("ChangeUseApplePay", "PayPalCommerce")', '@Html.NameFor(model => model.UseApplePay)', { enabled: $('#@Html.IdFor(model => model.UseApplePay)').is(':checked') });
     }
 </script>
 

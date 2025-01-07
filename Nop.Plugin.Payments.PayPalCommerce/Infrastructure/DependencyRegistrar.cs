@@ -1,7 +1,7 @@
-﻿using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
+using Nop.Core.Configuration;
 using Nop.Core.Infrastructure;
+using Nop.Core.Infrastructure.DependencyManagement;
 using Nop.Plugin.Payments.PayPalCommerce.Factories;
 using Nop.Plugin.Payments.PayPalCommerce.Services;
 using Nop.Web.Framework.Infrastructure.Extensions;
@@ -9,16 +9,17 @@ using Nop.Web.Framework.Infrastructure.Extensions;
 namespace Nop.Plugin.Payments.PayPalCommerce.Infrastructure
 {
     /// <summary>
-    /// Represents the object for the configuring services on application startup
+    /// Represents a plugin dependency registrar
     /// </summary>
-    public class NopStartup : INopStartup
+    public class DependencyRegistrar : IDependencyRegistrar
     {
         /// <summary>
-        /// Add and configure any of the middleware
+        /// Register services and interfaces
         /// </summary>
         /// <param name="services">Collection of service descriptors</param>
-        /// <param name="configuration">Configuration of the application</param>
-        public void ConfigureServices(IServiceCollection services, IConfiguration configuration)
+        /// <param name="typeFinder">Type finder</param>
+        /// <param name="appSettings">App settings</param>
+        public virtual void Register(IServiceCollection services, ITypeFinder typeFinder, AppSettings appSettings)
         {
             services.AddHttpClient<OnboardingHttpClient>().WithProxy();
             services.AddHttpClient<PayPalCommerceHttpClient>().WithProxy();
@@ -28,15 +29,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Infrastructure
         }
 
         /// <summary>
-        /// Configure the using of added middleware
-        /// </summary>
-        /// <param name="application">Builder for configuring an application's request pipeline</param>
-        public void Configure(IApplicationBuilder application)
-        {
-        }
-
-        /// <summary>
-        /// Gets order of this startup configuration implementation
+        /// Order of this dependency registrar implementation
         /// </summary>
         public int Order => 1;
     }

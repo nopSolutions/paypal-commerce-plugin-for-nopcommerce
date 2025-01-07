@@ -215,7 +215,10 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Factories
         public async Task<OrderApprovedModel> PrepareOrderApprovedModelAsync(string orderId, string liabilityShift)
         {
             var model = new OrderApprovedModel();
-            (model.CheckoutIsEnabled, model.LoginIsRequired, var cart) = await _serviceManager.CheckoutIsEnabledAsync();
+            var (checkoutIsEnabled, loginIsRequired, cart) = await _serviceManager.CheckoutIsEnabledAsync();
+            model.CheckoutIsEnabled = checkoutIsEnabled;
+            model.LoginIsRequired = loginIsRequired;
+
             if (cart?.Any() != true)
                 return model;
 
@@ -242,7 +245,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Factories
         public async Task<OrderConfirmModel> PrepareOrderConfirmModelAsync(string orderId, string orderGuid, string liabilityShift, bool approve)
         {
             var model = new OrderConfirmModel { OrderId = orderId, OrderGuid = orderGuid, LiabilityShift = liabilityShift };
-            (model.CheckoutIsEnabled, model.LoginIsRequired, var cart) = await _serviceManager.CheckoutIsEnabledAsync();
+            var (checkoutIsEnabled, loginIsRequired, cart) = await _serviceManager.CheckoutIsEnabledAsync();
+            model.CheckoutIsEnabled = checkoutIsEnabled;
+            model.LoginIsRequired = loginIsRequired;
             if (cart?.Any() != true)
                 return model;
 
@@ -276,7 +281,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Factories
         public async Task<OrderCompletedModel> PrepareOrderCompletedModelAsync(string orderId, string liabilityShift)
         {
             var model = new OrderCompletedModel();
-            (model.CheckoutIsEnabled, model.LoginIsRequired, var cart) = await _serviceManager.CheckoutIsEnabledAsync();
+            var (checkoutIsEnabled, loginIsRequired, cart) = await _serviceManager.CheckoutIsEnabledAsync();
+            model.CheckoutIsEnabled = checkoutIsEnabled;
+            model.LoginIsRequired = loginIsRequired;
             if (cart?.Any() != true)
                 return model;
 

@@ -2,7 +2,7 @@
 
 @{
     Layout = "_ConfigurePlugin";
-    NopHtml.SetActiveMenuItemSystemName($"{PayPalCommerceDefaults.SystemName} Pay Later");
+    Html.SetActiveMenuItemSystemName($"{PayPalCommerceDefaults.SystemName} Pay Later");
 }
 
 @await Component.InvokeAsync("StoreScopeConfiguration")
