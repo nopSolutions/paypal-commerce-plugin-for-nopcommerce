@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
@@ -45,13 +44,10 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Components.Public
         /// </summary>
         /// <param name="widgetZone">Widget zone name</param>
         /// <param name="additionalData">Additional data</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the view component result
-        /// </returns>
-        public async Task<IViewComponentResult> InvokeAsync(string widgetZone, object additionalData)
+        /// <returns>The view component result</returns>
+        public IViewComponentResult Invoke(string widgetZone, object additionalData)
         {
-            var (active, _) = await _serviceManager.IsActiveAsync(_settings);
+            var (active, _) = _serviceManager.IsActive(_settings);
             if (!active)
                 return Content(string.Empty);
 
@@ -73,7 +69,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Components.Public
             //load script only on checkout pages (excluding payment method page) to avoid double loading
             var loadScript = !isCartPage && !isPaymentMethodPage;
             var placement = isCartPage ? ButtonPlacement.Cart : ButtonPlacement.PaymentMethod;
-            var model = await _modelFactory.PrepareMessagesModelAsync(placement, loadScript);
+            var model = _modelFactory.PrepareMessagesModel(placement, loadScript);
 
             return View("~/Plugins/Payments.PayPalCommerce/Views/Public/_Messages.cshtml", model);
         }

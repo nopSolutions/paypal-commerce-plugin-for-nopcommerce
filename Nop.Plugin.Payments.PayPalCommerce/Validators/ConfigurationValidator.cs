@@ -16,17 +16,17 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Validators
         {
             RuleFor(model => model.ClientId)
                 .NotEmpty()
-                .WithMessageAwait(localizationService.GetResourceAsync("Plugins.Payments.PayPalCommerce.Fields.ClientId.Required"))
+                .WithMessage(localizationService.GetResource("Plugins.Payments.PayPalCommerce.Fields.ClientId.Required"))
                 .When(model => !model.UseSandbox && model.SetCredentialsManually);
 
             RuleFor(model => model.SecretKey)
                 .NotEmpty()
-                .WithMessageAwait(localizationService.GetResourceAsync("Plugins.Payments.PayPalCommerce.Fields.SecretKey.Required"))
+                .WithMessage(localizationService.GetResource("Plugins.Payments.PayPalCommerce.Fields.SecretKey.Required"))
                 .When(model => !model.UseSandbox && model.SetCredentialsManually);
 
             RuleFor(model => model.MerchantId)
                 .NotEmpty()
-                .WithMessageAwait(localizationService.GetResourceAsync("Plugins.Payments.PayPalCommerce.Fields.MerchantId.Required"))
+                .WithMessage(localizationService.GetResource("Plugins.Payments.PayPalCommerce.Fields.MerchantId.Required"))
                 .When(model => !model.UseSandbox && model.SetCredentialsManually);
         }
 

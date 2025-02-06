@@ -6,7 +6,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Models.Public
     /// <summary>
     /// Represents the payment info model
     /// </summary>
-    public record PaymentInfoModel : BaseNopModel
+    public class PaymentInfoModel : BaseNopModel
     {
         #region Properties
 
@@ -14,11 +14,11 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Models.Public
 
         public int? ProductId { get; set; }
 
-        public (string Url, string ClientToken, string UserToken) Script { get; set; } = new();
+        public (string Url, string ClientToken, string UserToken) Script { get; set; } = (string.Empty, string.Empty, string.Empty);
 
-        public (string Email, string FullName) Customer { get; set; } = new();
+        public (string Email, string FullName) Customer { get; set; } = (string.Empty, string.Empty);
 
-        public MessagesModel MessagesModel { get; set; } = new();
+        public MessagesModel MessagesModel { get; set; } = new MessagesModel();
 
         #endregion
     }

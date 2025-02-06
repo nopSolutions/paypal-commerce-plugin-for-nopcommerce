@@ -2,10 +2,10 @@
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Text;
-using System.Threading.Tasks;
 using Microsoft.Net.Http.Headers;
 using Newtonsoft.Json;
 using Nop.Core;
+using Nop.Core.Http;
 using Nop.Plugin.Payments.PayPalCommerce.Services.Api;
 using Nop.Plugin.Payments.PayPalCommerce.Services.Api.Authentication;
 using Nop.Plugin.Payments.PayPalCommerce.Services.Api.Models;
@@ -20,17 +20,17 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
     {
         #region Fields
 
-        private readonly HttpClient _httpClient;
+        private readonly IHttpClientFactory _httpClientFactory;
 
-        private static Dictionary<string, AccessToken> _accessTokens = new();
+        private static Dictionary<string, AccessToken> _accessTokens = new Dictionary<string, AccessToken>();
 
         #endregion
 
         #region Ctor
 
-        public PayPalCommerceHttpClient(HttpClient httpClient)
+        public PayPalCommerceHttpClient(IHttpClientFactory httpClientFactory)
         {
-            _httpClient = httpClient;
+            _httpClientFactory = httpClientFactory;
         }
 
         #endregion
@@ -41,11 +41,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// Get access token
         /// </summary>
         /// <param name="settings">Plugin settings</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the access token
-        /// </returns>
-        private async Task<string> GetAccessTokenAsync(PayPalCommerceSettings settings)
+        /// <returns>The access token</returns>
+        private string GetAccessToken(PayPalCommerceSettings settings)
         {
             if (!PayPalCommerceServiceManager.IsConfigured(settings))
                 throw new NopException("Plugin is not configured");
@@ -56,7 +53,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 accessToken.IsExpired)
             {
                 //get new access token
-                accessToken = await RequestAsync<GetAccessTokenRequest, GetAccessTokenResponse>(new()
+                accessToken = Request<GetAccessTokenRequest, GetAccessTokenResponse>(new GetAccessTokenRequest
                 {
                     ClientId = settings.ClientId,
                     Secret = settings.SecretKey,
@@ -79,13 +76,12 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// <typeparam name="TResponse">Response type</typeparam>
         /// <param name="request">Request</param>
         /// <param name="settings">Plugin settings</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the response details
-        /// </returns>
-        public async Task<TResponse> RequestAsync<TRequest, TResponse>(TRequest request, PayPalCommerceSettings settings)
+        /// <returns>The response details</returns>
+        public TResponse Request<TRequest, TResponse>(TRequest request, PayPalCommerceSettings settings)
             where TRequest : IApiRequest where TResponse : IApiResponse
         {
+            var client = _httpClientFactory.CreateClient(NopHttpDefaults.DefaultHttpClient);
+
             //prepare request body, content is always JSON except for access token requests
             var requestString = JsonConvert.SerializeObject(request, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
             var requestContent = request is GetAccessTokenRequest accessTokenRequest
@@ -106,20 +102,21 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             try
             {
                 var timeout = TimeSpan.FromSeconds(settings.RequestTimeout ?? PayPalCommerceDefaults.RequestTimeout);
-                if (_httpClient.Timeout != timeout)
-                    _httpClient.Timeout = timeout;
+                if (client.Timeout != timeout)
+                    client.Timeout = timeout;
             }
             catch { }
 
             //add authorization and some custom headers
             var authorization = request switch
             {
-                IAuthorizedRequest => $"Bearer {await GetAccessTokenAsync(settings)}",
                 GetCredentialsRequest credentialsRequest => $"Bearer {credentialsRequest.AccessToken}",
                 GetAccessTokenRequest tokenRequest =>
                     $"Basic {Convert.ToBase64String(Encoding.Default.GetBytes($"{tokenRequest.ClientId}:{tokenRequest.Secret}"))}",
                 _ => null
             };
+            if (request is IAuthorizedRequest)
+                authorization = $"Bearer {GetAccessToken(settings)}";
             if (!string.IsNullOrEmpty(authorization))
                 requestMessage.Headers.Add(HeaderNames.Authorization, authorization);
             requestMessage.Headers.Add(HeaderNames.UserAgent, PayPalCommerceDefaults.UserAgent);
@@ -129,8 +126,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             requestMessage.Headers.Add("Prefer", "return=representation");
 
             //execute the request and get a result
-            var httpResponse = await _httpClient.SendAsync(requestMessage);
-            var responseString = await httpResponse.Content.ReadAsStringAsync();
+            var httpResponse = client.SendAsync(requestMessage).Result;
+            var responseString = httpResponse.Content.ReadAsStringAsync().Result;
 
             //successful request processing
             if (httpResponse.IsSuccessStatusCode)

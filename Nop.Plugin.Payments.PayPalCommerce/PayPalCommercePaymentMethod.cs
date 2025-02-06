@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
@@ -82,42 +81,34 @@ namespace Nop.Plugin.Payments.PayPalCommerce
         /// Process a payment
         /// </summary>
         /// <param name="processPaymentRequest">Payment info required for an order processing</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the process payment result
-        /// </returns>
-        public Task<ProcessPaymentResult> ProcessPaymentAsync(ProcessPaymentRequest processPaymentRequest)
+        /// <returns>The process payment result</returns>
+        public ProcessPaymentResult ProcessPayment(ProcessPaymentRequest processPaymentRequest)
         {
-            return Task.FromResult(new ProcessPaymentResult());
+            return new ProcessPaymentResult();
         }
 
         /// <summary>
         /// Post process payment (used by payment gateways that require redirecting to a third-party URL)
         /// </summary>
         /// <param name="postProcessPaymentRequest">Payment info required for an order processing</param>
-        /// <returns>A task that represents the asynchronous operation</returns>
-        public Task PostProcessPaymentAsync(PostProcessPaymentRequest postProcessPaymentRequest)
+        public void PostProcessPayment(PostProcessPaymentRequest postProcessPaymentRequest)
         {
-            return Task.CompletedTask;
         }
 
         /// <summary>
         /// Captures payment
         /// </summary>
         /// <param name="capturePaymentRequest">Capture payment request</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the capture payment result
-        /// </returns>
-        public async Task<CapturePaymentResult> CaptureAsync(CapturePaymentRequest capturePaymentRequest)
+        /// <returns>The capture payment result</returns>
+        public CapturePaymentResult Capture(CapturePaymentRequest capturePaymentRequest)
         {
             //capture previously authorized payment
-            var (capture, error) = await _serviceManager.CaptureAuthorizationAsync(_settings, capturePaymentRequest.Order.AuthorizationTransactionId);
+            var (capture, error) = _serviceManager.CaptureAuthorization(_settings, capturePaymentRequest.Order.AuthorizationTransactionId);
             if (!string.IsNullOrEmpty(error))
-                return new() { Errors = new[] { error } };
+                return new CapturePaymentResult { Errors = new[] { error } };
 
             //request succeeded
-            return new()
+            return new CapturePaymentResult
             {
                 CaptureTransactionId = capture.Id,
                 CaptureTransactionResult = capture.Status,
@@ -129,134 +120,106 @@ namespace Nop.Plugin.Payments.PayPalCommerce
         /// Voids a payment
         /// </summary>
         /// <param name="voidPaymentRequest">Request</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the result
-        /// </returns>
-        public async Task<VoidPaymentResult> VoidAsync(VoidPaymentRequest voidPaymentRequest)
+        /// <returns>The result</returns>
+        public VoidPaymentResult Void(VoidPaymentRequest voidPaymentRequest)
         {
             //void previously authorized payment
-            var (_, error) = await _serviceManager.VoidAsync(_settings, voidPaymentRequest.Order.AuthorizationTransactionId);
+            var (_, error) = _serviceManager.Void(_settings, voidPaymentRequest.Order.AuthorizationTransactionId);
             if (!string.IsNullOrEmpty(error))
-                return new() { Errors = new[] { error } };
+                return new VoidPaymentResult { Errors = new[] { error } };
 
             //request succeeded
-            return new() { NewPaymentStatus = PaymentStatus.Voided };
+            return new VoidPaymentResult { NewPaymentStatus = PaymentStatus.Voided };
         }
 
         /// <summary>
         /// Refunds a payment
         /// </summary>
         /// <param name="refundPaymentRequest">Request</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the result
-        /// </returns>
-        public async Task<RefundPaymentResult> RefundAsync(RefundPaymentRequest refundPaymentRequest)
+        /// <returns>The result</returns>
+        public RefundPaymentResult Refund(RefundPaymentRequest refundPaymentRequest)
         {
             //refund previously captured payment
             var amount = refundPaymentRequest.AmountToRefund != refundPaymentRequest.Order.OrderTotal
                 ? (decimal?)refundPaymentRequest.AmountToRefund
                 : null;
 
-            var (_, error) = await _serviceManager.RefundAsync(_settings, refundPaymentRequest.Order, amount);
+            var (_, error) = _serviceManager.Refund(_settings, refundPaymentRequest.Order, amount);
             if (!string.IsNullOrEmpty(error))
-                return new() { Errors = new[] { error } };
+                return new RefundPaymentResult { Errors = new[] { error } };
 
             //request succeeded
-            return new() { NewPaymentStatus = refundPaymentRequest.IsPartialRefund ? PaymentStatus.PartiallyRefunded : PaymentStatus.Refunded };
+            return new RefundPaymentResult { NewPaymentStatus = refundPaymentRequest.IsPartialRefund ? PaymentStatus.PartiallyRefunded : PaymentStatus.Refunded };
         }
 
         /// <summary>
         /// Process recurring payment
         /// </summary>
         /// <param name="processPaymentRequest">Payment info required for an order processing</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the process payment result
-        /// </returns>
-        public Task<ProcessPaymentResult> ProcessRecurringPaymentAsync(ProcessPaymentRequest processPaymentRequest)
+        /// <returns>The process payment result</returns>
+        public ProcessPaymentResult ProcessRecurringPayment(ProcessPaymentRequest processPaymentRequest)
         {
-            return Task.FromResult(new ProcessPaymentResult { Errors = new[] { "Recurring payment not supported" } });
+            return new ProcessPaymentResult { Errors = new[] { "Recurring payment not supported" } };
         }
 
         /// <summary>
         /// Cancels a recurring payment
         /// </summary>
         /// <param name="cancelPaymentRequest">Request</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the result
-        /// </returns>
-        public Task<CancelRecurringPaymentResult> CancelRecurringPaymentAsync(CancelRecurringPaymentRequest cancelPaymentRequest)
+        /// <returns>The result</returns>
+        public CancelRecurringPaymentResult CancelRecurringPayment(CancelRecurringPaymentRequest cancelPaymentRequest)
         {
-            return Task.FromResult(new CancelRecurringPaymentResult { Errors = new[] { "Recurring payment not supported" } });
+            return new CancelRecurringPaymentResult { Errors = new[] { "Recurring payment not supported" } };
         }
 
         /// <summary>
         /// Returns a value indicating whether payment method should be hidden during checkout
         /// </summary>
         /// <param name="cart">Shoping cart</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains true - hide; false - display.
-        /// </returns>
-        public Task<bool> HidePaymentMethodAsync(IList<ShoppingCartItem> cart)
+        /// <returns>true - hide; false - display.</returns>
+        public bool HidePaymentMethod(IList<ShoppingCartItem> cart)
         {
-            var notConnected = !PayPalCommerceServiceManager.IsConnected(_settings);
-            return Task.FromResult(notConnected);
+            return !PayPalCommerceServiceManager.IsConnected(_settings);
         }
 
         /// <summary>
         /// Gets additional handling fee
         /// </summary>
         /// <param name="cart">Shoping cart</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the additional handling fee
-        /// </returns>
-        public Task<decimal> GetAdditionalHandlingFeeAsync(IList<ShoppingCartItem> cart)
+        /// <returns>The additional handling fee</returns>
+        public decimal GetAdditionalHandlingFee(IList<ShoppingCartItem> cart)
         {
-            return Task.FromResult(decimal.Zero);
+            return decimal.Zero;
         }
 
         /// <summary>
         /// Gets a value indicating whether customers can complete a payment after order is placed but not completed (for redirection payment methods)
         /// </summary>
         /// <param name="order">Order</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the result
-        /// </returns>
-        public Task<bool> CanRePostProcessPaymentAsync(Order order)
+        /// <returns>The result</returns>
+        public bool CanRePostProcessPayment(Order order)
         {
-            return Task.FromResult(false);
+            return false;
         }
 
         /// <summary>
         /// Validate payment form
         /// </summary>
         /// <param name="form">The parsed form values</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the list of validating errors
-        /// </returns>
-        public Task<IList<string>> ValidatePaymentFormAsync(IFormCollection form)
+        /// <returns>The list of validating errors</returns>
+        public IList<string> ValidatePaymentForm(IFormCollection form)
         {
-            return Task.FromResult<IList<string>>(new List<string>());
+            return new List<string>();
         }
 
         /// <summary>
         /// Get payment information
         /// </summary>
         /// <param name="form">The parsed form values</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the payment info holder
-        /// </returns>
-        public Task<ProcessPaymentRequest> GetPaymentInfoAsync(IFormCollection form)
+        /// <returns>The payment info holder</returns>
+        public ProcessPaymentRequest GetPaymentInfo(IFormCollection form)
         {
-            return Task.FromResult(new ProcessPaymentRequest());
+            return new ProcessPaymentRequest();
         }
 
         /// <summary>
@@ -279,13 +242,10 @@ namespace Nop.Plugin.Payments.PayPalCommerce
         /// <summary>
         /// Gets widget zones where this widget should be rendered
         /// </summary>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the widget zones
-        /// </returns>
-        public Task<IList<string>> GetWidgetZonesAsync()
+        /// <returns>The widget zones</returns>
+        public IList<string> GetWidgetZones()
         {
-            return Task.FromResult<IList<string>>(new List<string>
+            return new List<string>
             {
                 PublicWidgetZones.ProductDetailsAddInfo,
                 PublicWidgetZones.OrderSummaryContentBefore,
@@ -295,7 +255,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce
                 AdminWidgetZones.OrderShipmentDetailsButtons,
                 AdminWidgetZones.OrderShipmentAddButtons,
                 AdminWidgetZones.PaymentMethodListTop
-            });
+            };
         }
 
         /// <summary>
@@ -330,10 +290,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce
         /// Manage sitemap. You can use "SystemName" of menu items to manage existing sitemap or add a new menu item.
         /// </summary>
         /// <param name="rootNode">Root node of the sitemap.</param>
-        /// <returns>A task that represents the asynchronous operation</returns>
-        public async Task ManageSiteMapAsync(SiteMapNode rootNode)
+        public void ManageSiteMap(SiteMapNode rootNode)
         {
-            if (!await _permissionService.AuthorizeAsync(StandardPermissionProvider.ManagePaymentMethods))
+            if (!_permissionService.Authorize(StandardPermissionProvider.ManagePaymentMethods))
                 return;
 
             var configurationItem = rootNode.ChildNodes.FirstOrDefault(node => node.SystemName.Equals("Configuration"));
@@ -353,28 +312,28 @@ namespace Nop.Plugin.Payments.PayPalCommerce
             {
                 Visible = true,
                 SystemName = PluginDescriptor.SystemName,
-                Title = await _localizationService.GetLocalizedFriendlyNameAsync(this, (await _workContext.GetWorkingLanguageAsync()).Id),
-                IconClass = "far fa-dot-circle",
+                Title = _localizationService.GetLocalizedFriendlyName(this, _workContext.WorkingLanguage.Id),
+                IconClass = "fa fa-dot-circle-o",
                 ChildNodes = new List<SiteMapNode>
                 {
-                    new()
+                    new SiteMapNode
                     {
                         Visible = true,
                         SystemName = $"{PayPalCommerceDefaults.SystemName} Configuration",
-                        Title = await _localizationService.GetResourceAsync("Plugins.Payments.PayPalCommerce.Configuration"),
+                        Title = _localizationService.GetResource("Plugins.Payments.PayPalCommerce.Configuration"),
                         ControllerName = "PayPalCommerce",
                         ActionName = "Configure",
-                        IconClass = "far fa-circle",
+                        IconClass = "fa fa-genderless",
                         RouteValues = new RouteValueDictionary { { "area", AreaNames.Admin } }
                     },
-                    new()
+                    new SiteMapNode
                     {
                         Visible = _settings.UseSandbox || _settings.ConfiguratorSupported,
                         SystemName = $"{PayPalCommerceDefaults.SystemName} Pay Later",
-                        Title = await _localizationService.GetResourceAsync("Plugins.Payments.PayPalCommerce.PayLater"),
+                        Title = _localizationService.GetResource("Plugins.Payments.PayPalCommerce.PayLater"),
                         ControllerName = "PayPalCommerce",
                         ActionName = "PayLater",
-                        IconClass = "far fa-circle",
+                        IconClass = "fa fa-genderless",
                         RouteValues = new RouteValueDictionary { { "area", AreaNames.Admin } }
                     }
                 }
@@ -384,10 +343,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce
         /// <summary>
         /// Install the plugin
         /// </summary>
-        /// <returns>A task that represents the asynchronous operation</returns>
-        public override async Task InstallAsync()
+        public override void Install()
         {
-            await _settingService.SaveSettingAsync(new PayPalCommerceSettings
+            _settingService.SaveSetting(new PayPalCommerceSettings
             {
                 SetCredentialsManually = false,
                 UseSandbox = false,
@@ -416,7 +374,6 @@ namespace Nop.Plugin.Payments.PayPalCommerce
                 ImmediatePaymentRequired = false,
                 OrderValidityInterval = 5 * 60, //5 minutes
                 ConfiguratorSupported = false,
-                MerchantIdRequired = false,
                 LogoInHeaderLinks =
                     "<!-- PayPal Logo --><li><a href=\"https://www.paypal.com/webapps/mpp/paypal-popup\" title=\"How PayPal Works\" " +
                     "onclick=\"javascript:window.open('https://www.paypal.com/webapps/mpp/paypal-popup','WIPaypal','toolbar=no, location=no, " +
@@ -434,16 +391,16 @@ namespace Nop.Plugin.Payments.PayPalCommerce
             if (!_paymentSettings.ActivePaymentMethodSystemNames.Contains(PayPalCommerceDefaults.SystemName))
             {
                 _paymentSettings.ActivePaymentMethodSystemNames.Add(PayPalCommerceDefaults.SystemName);
-                await _settingService.SaveSettingAsync(_paymentSettings);
+                _settingService.SaveSetting(_paymentSettings);
             }
 
             if (!_widgetSettings.ActiveWidgetSystemNames.Contains(PayPalCommerceDefaults.SystemName))
             {
                 _widgetSettings.ActiveWidgetSystemNames.Add(PayPalCommerceDefaults.SystemName);
-                await _settingService.SaveSettingAsync(_widgetSettings);
+                _settingService.SaveSetting(_widgetSettings);
             }
 
-            await _localizationService.AddLocaleResourceAsync(new Dictionary<string, string>
+            _localizationService.AddPluginLocaleResource(new Dictionary<string, string>
             {
                 ["Enums.Nop.Plugin.Payments.PayPalCommerce.Domain.ButtonPlacement.Cart"] = "Shopping cart",
                 ["Enums.Nop.Plugin.Payments.PayPalCommerce.Domain.ButtonPlacement.Product"] = "Product",
@@ -552,52 +509,42 @@ namespace Nop.Plugin.Payments.PayPalCommerce
                 ["Plugins.Payments.PayPalCommerce.WebhookWarning"] = "Webhook was not created, so some functions may not work correctly (see details in the <a href=\"{0}\" target=\"_blank\">log</a>. Please ensure that your store is under SSL, PayPal service doesn't send requests to unsecured sites.)"
             });
 
-            await base.InstallAsync();
+            base.Install();
         }
 
         /// <summary>
         /// Uninstall the plugin
         /// </summary>
-        /// <returns>A task that represents the asynchronous operation</returns>
-        public override async Task UninstallAsync()
+        public override void Uninstall()
         {
             //clear webhooks when uninstall
-            var stores = await _storeService.GetAllStoresAsync();
+            var stores = _storeService.GetAllStores();
             var storeIds = new List<int> { 0 }.Union(stores.Select(store => store.Id));
             foreach (var storeId in storeIds)
             {
-                var settings = await _settingService.LoadSettingAsync<PayPalCommerceSettings>(storeId);
+                var settings = _settingService.LoadSetting<PayPalCommerceSettings>(storeId);
                 if (PayPalCommerceServiceManager.IsConnected(settings))
-                    await _serviceManager.DeleteWebhookAsync(settings);
+                    _serviceManager.DeleteWebhook(settings);
             }
 
             if (_paymentSettings.ActivePaymentMethodSystemNames.Contains(PayPalCommerceDefaults.SystemName))
             {
                 _paymentSettings.ActivePaymentMethodSystemNames.Remove(PayPalCommerceDefaults.SystemName);
-                await _settingService.SaveSettingAsync(_paymentSettings);
+                _settingService.SaveSetting(_paymentSettings);
             }
 
             if (_widgetSettings.ActiveWidgetSystemNames.Contains(PayPalCommerceDefaults.SystemName))
             {
                 _widgetSettings.ActiveWidgetSystemNames.Remove(PayPalCommerceDefaults.SystemName);
-                await _settingService.SaveSettingAsync(_widgetSettings);
+                _settingService.SaveSetting(_widgetSettings);
             }
 
-            await _settingService.DeleteSettingAsync<PayPalCommerceSettings>();
+            _settingService.DeleteSetting<PayPalCommerceSettings>();
 
-            await _localizationService.DeleteLocaleResourcesAsync("Enums.Nop.Plugin.Payments.PayPalCommerce");
-            await _localizationService.DeleteLocaleResourcesAsync("Plugins.Payments.PayPalCommerce");
+            _localizationService.DeletePluginLocaleResources("Enums.Nop.Plugin.Payments.PayPalCommerce");
+            _localizationService.DeletePluginLocaleResources("Plugins.Payments.PayPalCommerce");
 
-            await base.UninstallAsync();
-        }
-
-        /// <summary>
-        /// Gets a payment method description that will be displayed on checkout pages in the public store
-        /// </summary>
-        /// <returns>A task that represents the asynchronous operation</returns>
-        public async Task<string> GetPaymentMethodDescriptionAsync()
-        {
-            return await _localizationService.GetResourceAsync("Plugins.Payments.PayPalCommerce.PaymentMethodDescription");
+            base.Uninstall();
         }
 
         #endregion
@@ -638,6 +585,11 @@ namespace Nop.Plugin.Payments.PayPalCommerce
         /// Gets a value indicating whether we should display a payment information page for this plugin
         /// </summary>
         public bool SkipPaymentInfo => false;
+
+        /// <summary>
+        /// Gets a payment method description that will be displayed on checkout pages in the public store
+        /// </summary>
+        public string PaymentMethodDescription => _localizationService.GetResource("Plugins.Payments.PayPalCommerce.PaymentMethodDescription");
 
         /// <summary>
         /// Gets a value indicating whether to hide this plugin on the widget list page in the admin area

@@ -5,7 +5,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Models.Admin
     /// <summary>
     /// Represents the onboarding callback model
     /// </summary>
-    public record OnboardingCallbackModel : BaseNopModel
+    public class OnboardingCallbackModel : BaseNopModel
     {
         #region Properties
 

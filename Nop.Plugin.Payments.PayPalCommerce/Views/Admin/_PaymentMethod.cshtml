@@ -1,8 +1,8 @@
 ﻿@model bool
 
-<div class="card card-default">
-    <div class="card-body">
-        <div class="form-group row">
+<div class="panel panel-default">
+    <div class="panel-body">
+        <div class="form-group">
             @if (!Model)
             {
                 <div class="col-md-8">
@@ -46,7 +46,7 @@
                 <div class="col-md-5">
                     <br />
                     <span style="font-size: large;"><b>PayPal: The all-in-one checkout solution</b></span><br /><br />
-                    <i class="fas fa-check true-icon" nop-value="true"></i><span style="padding-left: 10px;">Your PayPal account is connected</span>
+                    <i class="fa fa-check true-icon" nop-value="true"></i><span style="padding-left: 10px;">Your PayPal account is connected</span>
                     <br />
                     <br />
                     <a href="@Url.Action("Configure", "PayPalCommerce")" class="btn btn-primary">

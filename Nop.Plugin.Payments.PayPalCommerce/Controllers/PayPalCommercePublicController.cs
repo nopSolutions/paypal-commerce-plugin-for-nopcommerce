@@ -1,6 +1,5 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Nop.Core;
 using Nop.Plugin.Payments.PayPalCommerce.Domain;
@@ -8,7 +7,6 @@ using Nop.Plugin.Payments.PayPalCommerce.Factories;
 using Nop.Plugin.Payments.PayPalCommerce.Models.Public;
 using Nop.Services.Messages;
 using Nop.Web.Controllers;
-using Nop.Web.Framework.Mvc.Filters;
 
 namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
 {
@@ -40,17 +38,16 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
 
         #region Checkout
 
-        public async Task<IActionResult> PluginPaymentInfo()
+        public IActionResult PluginPaymentInfo()
         {
-            var model = await _modelFactory.PrepareCheckoutPaymentInfoModelAsync();
+            var model = _modelFactory.PrepareCheckoutPaymentInfoModel();
 
             return View("~/Plugins/Payments.PayPalCommerce/Views/Public/PluginPaymentInfo.cshtml", model);
         }
 
-        [CheckLanguageSeoCode(ignore: true)]
-        public async Task<IActionResult> ValidateShoppingCart()
+        public IActionResult ValidateShoppingCart()
         {
-            var warnings = await _modelFactory.GetShoppingCartWarningsAsync();
+            var warnings = _modelFactory.GetShoppingCartWarnings();
             if (warnings?.Any() ?? false)
                 return ErrorJson(warnings.ToArray());
 
@@ -58,9 +55,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> CreateOrder(int placement, string paymentSource, int cardId, bool saveCard)
+        public IActionResult CreateOrder(int placement, string paymentSource, int cardId, bool saveCard)
         {
-            var model = await _modelFactory.PrepareOrderModelAsync((ButtonPlacement)placement, null, paymentSource, cardId, saveCard);
+            var model = _modelFactory.PrepareOrderModel((ButtonPlacement)placement, null, paymentSource, cardId, saveCard);
             if (model.LoginIsRequired)
                 return Json(new { redirect = Url.RouteUrl("Login", new { returnUrl = Url.RouteUrl(PayPalCommerceDefaults.Route.ShoppingCart) }) });
 
@@ -78,9 +75,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> GetOrderStatus(int placement, string orderId)
+        public IActionResult GetOrderStatus(int placement, string orderId)
         {
-            var model = await _modelFactory.PrepareOrderModelAsync((ButtonPlacement)placement, orderId, null, null, false);
+            var model = _modelFactory.PrepareOrderModel((ButtonPlacement)placement, orderId, null, null, false);
             if (!string.IsNullOrEmpty(model.Error))
                 return ErrorJson(model.Error);
 
@@ -88,9 +85,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> UpdateOrderShipping(OrderShippingModel model)
+        public IActionResult UpdateOrderShipping(OrderShippingModel model)
         {
-            model = await _modelFactory.PrepareOrderShippingModelAsync(model);
+            model = _modelFactory.PrepareOrderShippingModel(model);
             if (!string.IsNullOrEmpty(model.Error))
                 return ErrorJson(model.Error);
 
@@ -98,9 +95,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> ApproveOrder(string orderId, string liabilityShift)
+        public IActionResult ApproveOrder(string orderId, string liabilityShift)
         {
-            var model = await _modelFactory.PrepareOrderApprovedModelAsync(orderId, liabilityShift);
+            var model = _modelFactory.PrepareOrderApprovedModel(orderId, liabilityShift);
             if (model.LoginIsRequired)
                 return Json(new { redirect = Url.RouteUrl("Login", new { returnUrl = Url.RouteUrl(PayPalCommerceDefaults.Route.ShoppingCart) }) });
 
@@ -120,19 +117,19 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
             }
 
             //or pay it right now
-            var completedModel = await _modelFactory.PrepareOrderCompletedModelAsync(orderId, liabilityShift);
+            var completedModel = _modelFactory.PrepareOrderCompletedModel(orderId, liabilityShift);
             if (!string.IsNullOrEmpty(completedModel.Error))
                 return ErrorJson(completedModel.Error);
 
             return Json(new { redirect = Url.RouteUrl(PayPalCommerceDefaults.Route.CheckoutCompleted, new { orderId = completedModel.OrderId }) });
         }
 
-        public async Task<IActionResult> ConfirmOrder(string orderId, string token, string liabilityShift, bool approve)
+        public IActionResult ConfirmOrder(string orderId, string token, string liabilityShift, bool approve)
         {
             if (string.IsNullOrEmpty(liabilityShift))
                 liabilityShift = _webHelper.QueryString<string>("liability_shift");
 
-            var model = await _modelFactory.PrepareOrderConfirmModelAsync(orderId, token, liabilityShift, approve);
+            var model = _modelFactory.PrepareOrderConfirmModel(orderId, token, liabilityShift, approve);
             if (model.LoginIsRequired)
                 return RedirectToRoute("Login", new { returnUrl = Url.RouteUrl(PayPalCommerceDefaults.Route.ShoppingCart) });
 
@@ -146,9 +143,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> ConfirmOrderPost(string orderId, string orderGuid, string liabilityShift)
+        public IActionResult ConfirmOrderPost(string orderId, string orderGuid, string liabilityShift)
         {
-            var model = await _modelFactory.PrepareOrderConfirmModelAsync(orderId, orderGuid, null, false);
+            var model = _modelFactory.PrepareOrderConfirmModel(orderId, orderGuid, null, false);
             if (model.LoginIsRequired)
                 return RedirectToRoute("Login", new { returnUrl = Url.RouteUrl(PayPalCommerceDefaults.Route.ShoppingCart) });
 
@@ -158,7 +155,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
             if (!string.IsNullOrEmpty(model.Error))
                 _notificationService.ErrorNotification(model.Error);
 
-            var completedModel = await _modelFactory.PrepareOrderCompletedModelAsync(orderId, liabilityShift);
+            var completedModel = _modelFactory.PrepareOrderCompletedModel(orderId, liabilityShift);
 
             if (!string.IsNullOrEmpty(completedModel.Error))
             {
@@ -173,9 +170,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> AppleTransactionInfo(int placement)
+        public IActionResult AppleTransactionInfo(int placement)
         {
-            var model = await _modelFactory.PrepareApplePayModelAsync((ButtonPlacement)placement);
+            var model = _modelFactory.PrepareApplePayModel((ButtonPlacement)placement);
             if (model.LoginIsRequired)
                 return Json(new { redirect = Url.RouteUrl("Login", new { returnUrl = Url.RouteUrl(PayPalCommerceDefaults.Route.ShoppingCart) }) });
 
@@ -229,9 +226,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> UpdateAppleShipping(ApplePayShippingModel model)
+        public IActionResult UpdateAppleShipping(ApplePayShippingModel model)
         {
-            model = await _modelFactory.PrepareApplePayShippingModelAsync(model);
+            model = _modelFactory.PrepareApplePayShippingModel(model);
             if (!string.IsNullOrEmpty(model.Error))
                 return ErrorJson(model.Error);
 
@@ -251,9 +248,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> GoogleTransactionInfo(int placement)
+        public IActionResult GoogleTransactionInfo(int placement)
         {
-            var model = await _modelFactory.PrepareGooglePayModelAsync((ButtonPlacement)placement);
+            var model = _modelFactory.PrepareGooglePayModel((ButtonPlacement)placement);
             if (model.LoginIsRequired)
                 return Json(new { redirect = Url.RouteUrl("Login", new { returnUrl = Url.RouteUrl(PayPalCommerceDefaults.Route.ShoppingCart) }) });
 
@@ -291,9 +288,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> CheckGoogleShipping(int placement, int? productId)
+        public IActionResult CheckGoogleShipping(int placement, int? productId)
         {
-            var (shippingIsRequired, error) = await _modelFactory.CheckShippingIsRequiredAsync(productId);
+            var (shippingIsRequired, error) = _modelFactory.CheckShippingIsRequired(productId);
             if (!string.IsNullOrEmpty(error))
                 return ErrorJson(error);
 
@@ -301,9 +298,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> UpdateGoogleShipping(GooglePayShippingModel model)
+        public IActionResult UpdateGoogleShipping(GooglePayShippingModel model)
         {
-            model = await _modelFactory.PrepareGooglePayShippingModelAsync(model);
+            model = _modelFactory.PrepareGooglePayShippingModel(model);
             if (!string.IsNullOrEmpty(model.Error))
                 return ErrorJson(model.Error);
 
@@ -341,9 +338,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
 
         #region Payment tokens
 
-        public async Task<IActionResult> PaymentTokens()
+        public IActionResult PaymentTokens()
         {
-            var model = await _modelFactory.PreparePaymentTokenListModelAsync();
+            var model = _modelFactory.PreparePaymentTokenListModel();
             if (!model.VaultIsEnabled)
                 return RedirectToRoute(PayPalCommerceDefaults.Route.CustomerInfo);
 
@@ -355,9 +352,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> PaymentTokensDelete(int tokenId)
+        public IActionResult PaymentTokensDelete(int tokenId)
         {
-            var model = await _modelFactory.PreparePaymentTokenListModelAsync(deleteTokenId: tokenId);
+            var model = _modelFactory.PreparePaymentTokenListModel(deleteTokenId: tokenId);
             if (!model.VaultIsEnabled)
                 return Json(new { redirect = Url.RouteUrl(PayPalCommerceDefaults.Route.CustomerInfo) });
 
@@ -368,9 +365,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> PaymentTokensMarkDefault(int tokenId)
+        public IActionResult PaymentTokensMarkDefault(int tokenId)
         {
-            var model = await _modelFactory.PreparePaymentTokenListModelAsync(defaultTokenId: tokenId);
+            var model = _modelFactory.PreparePaymentTokenListModel(defaultTokenId: tokenId);
             if (!model.VaultIsEnabled)
                 return Json(new { redirect = Url.RouteUrl(PayPalCommerceDefaults.Route.CustomerInfo) });
 
@@ -381,9 +378,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> GetSavedCards(int placement)
+        public IActionResult GetSavedCards(int placement)
         {
-            var model = await _modelFactory.PrepareSavedCardListModelAsync((ButtonPlacement)placement);
+            var model = _modelFactory.PrepareSavedCardListModel((ButtonPlacement)placement);
             if (!string.IsNullOrEmpty(model.Error))
                 return ErrorJson(model.Error);
 

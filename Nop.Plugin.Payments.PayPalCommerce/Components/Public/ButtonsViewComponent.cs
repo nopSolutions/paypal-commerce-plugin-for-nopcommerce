@@ -1,5 +1,4 @@
-﻿using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
+﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Nop.Plugin.Payments.PayPalCommerce.Domain;
@@ -50,13 +49,10 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Components.Public
         /// </summary>
         /// <param name="widgetZone">Widget zone name</param>
         /// <param name="additionalData">Additional data</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the view component result
-        /// </returns>
-        public async Task<IViewComponentResult> InvokeAsync(string widgetZone, object additionalData)
+        /// <returns>The view component result</returns>
+        public IViewComponentResult Invoke(string widgetZone, object additionalData)
         {
-            var (active, _) = await _serviceManager.IsActiveAsync(_settings);
+            var (active, _) = _serviceManager.IsActive(_settings);
             if (!active)
                 return Content(string.Empty);
 
@@ -67,8 +63,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Components.Public
                 if (_settings.DisplayButtonsOnProductDetails)
                 {
                     var productId = additionalData is ProductDetailsModel.AddToCartModel product ? (int?)product.ProductId : null;
-                    if (productId is null || (await _productService.GetProductByIdAsync(productId ?? 0))?.ParentGroupedProductId == 0)
-                        model = await _modelFactory.PreparePaymentInfoModelAsync(ButtonPlacement.Product, productId);
+                    if (productId is null || (_productService.GetProductById(productId ?? 0))?.ParentGroupedProductId == 0)
+                        model = _modelFactory.PreparePaymentInfoModel(ButtonPlacement.Product, productId);
                 }
             }
             else if (widgetZone.Equals(PublicWidgetZones.OrderSummaryContentBefore))
@@ -77,13 +73,13 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Components.Public
                 {
                     var routeName = HttpContext.GetEndpoint()?.Metadata.GetMetadata<RouteNameMetadata>()?.RouteName;
                     if (routeName == PayPalCommerceDefaults.Route.ShoppingCart)
-                        model = await _modelFactory.PreparePaymentInfoModelAsync(ButtonPlacement.Cart);
+                        model = _modelFactory.PreparePaymentInfoModel(ButtonPlacement.Cart);
                 }
             }
             else
             {
                 if (_settings.DisplayButtonsOnPaymentMethod)
-                    model = await _modelFactory.PreparePaymentInfoModelAsync(ButtonPlacement.PaymentMethod);
+                    model = _modelFactory.PreparePaymentInfoModel(ButtonPlacement.PaymentMethod);
             }
 
             if (model is null)

@@ -5,7 +5,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Models.Public
     /// <summary>
     /// Represents the order confirmation model
     /// </summary>
-    public record OrderConfirmModel : OrderModel
+    public class OrderConfirmModel : OrderModel
     {
         #region Properties
 

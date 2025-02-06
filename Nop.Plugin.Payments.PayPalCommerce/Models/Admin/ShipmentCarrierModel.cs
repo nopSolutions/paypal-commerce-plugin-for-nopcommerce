@@ -6,7 +6,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Models.Admin
     /// <summary>
     /// Represents the shipment carrier model
     /// </summary>
-    public record ShipmentCarrierModel : BaseNopEntityModel
+    public class ShipmentCarrierModel : BaseNopEntityModel
     {
         #region Properties
 

@@ -1,5 +1,4 @@
-﻿using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Nop.Plugin.Payments.PayPalCommerce.Services;
 
 namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
@@ -27,9 +26,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         #region Methods
 
         [HttpPost]
-        public async Task<IActionResult> WebhookHandler()
+        public IActionResult WebhookHandler()
         {
-            await _serviceManager.HandleWebhookAsync(_settings, Request);
+            _serviceManager.HandleWebhook(_settings, Request);
             return Ok();
         }
 

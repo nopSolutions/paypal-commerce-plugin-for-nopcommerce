@@ -9,7 +9,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Models.Admin
     /// <summary>
     /// Represents the configuration model
     /// </summary>
-    public record ConfigurationModel : BaseNopModel
+    public class ConfigurationModel : BaseNopModel
     {
         #region Ctor
 
@@ -32,7 +32,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Models.Admin
 
         public string MerchantGuid { get; set; }
 
-        public MerchantModel MerchantModel { get; set; } = new();
+        public MerchantModel MerchantModel { get; set; } = new MerchantModel();
 
         [NopResourceDisplayName("Plugins.Payments.PayPalCommerce.Fields.MerchantId")]
         public string MerchantId { get; set; }

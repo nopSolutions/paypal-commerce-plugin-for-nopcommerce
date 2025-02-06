@@ -1,5 +1,4 @@
-﻿using System.Threading.Tasks;
-using Microsoft.AspNetCore.Html;
+﻿using Microsoft.AspNetCore.Html;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewComponents;
 using Nop.Plugin.Payments.PayPalCommerce.Services;
@@ -39,13 +38,10 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Components.Public
         /// </summary>
         /// <param name="widgetZone">Widget zone name</param>
         /// <param name="additionalData">Additional data</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the view component result
-        /// </returns>
-        public async Task<IViewComponentResult> InvokeAsync(string widgetZone, object additionalData)
+        /// <returns>The view component result</returns>
+        public IViewComponentResult Invoke(string widgetZone, object additionalData)
         {
-            var (active, _) = await _serviceManager.IsActiveAsync(_settings);
+            var (active, _) = _serviceManager.IsActive(_settings);
             if (!active)
                 return Content(string.Empty);
 

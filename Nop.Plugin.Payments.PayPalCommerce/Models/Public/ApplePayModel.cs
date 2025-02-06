@@ -6,7 +6,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Models.Public
     /// <summary>
     /// Represents the Apple Pay model
     /// </summary>
-    public record ApplePayModel : OrderModel
+    public class ApplePayModel : OrderModel
     {
         #region Properties
 
@@ -14,13 +14,13 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Models.Public
 
         public string CurrencyCode { get; set; }
 
-        public Contact BillingAddress { get; set; } = new();
+        public Contact BillingAddress { get; set; } = new Contact();
 
-        public Contact ShippingAddress { get; set; } = new();
+        public Contact ShippingAddress { get; set; } = new Contact();
 
-        public List<(string Id, string Label, string Description, string Price)> ShippingOptions { get; set; } = new();
+        public List<(string Id, string Label, string Description, string Price)> ShippingOptions { get; set; } = new List<(string, string, string, string)>();
 
-        public List<(string Type, string Price, string Status, string Label)> Items { get; set; } = new();
+        public List<(string Type, string Price, string Status, string Label)> Items { get; set; } = new List<(string, string, string, string)>();
 
         #endregion
     }

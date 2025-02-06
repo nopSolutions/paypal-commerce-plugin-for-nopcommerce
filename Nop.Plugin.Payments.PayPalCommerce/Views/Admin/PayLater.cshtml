@@ -9,15 +9,15 @@
 
 <script src="@PayPalCommerceDefaults.MerchantConfiguratorScriptUrl" defer></script>
 
-<div class="cards-group">
-    <div class="card card-default">
-        <div class="card-body">
+<div class="panel-group">
+    <div class="panel panel-default">
+        <div class="panel-body">
             <div id="messaging-configurator"></div>
         </div>
     </div>
 </div>
 
-<script asp-asp-location="Footer">
+<script type="text/javascript">
     $(document).ready(function () {
         window.merchantConfigurators?.Messaging({
             config: @Html.Raw(Model.Config),

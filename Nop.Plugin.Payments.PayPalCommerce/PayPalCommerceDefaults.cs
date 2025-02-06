@@ -16,7 +16,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce
         /// <summary>
         /// Gets the user agent used to request third-party services
         /// </summary>
-        public static string UserAgent => $"nopCommerce-{NopVersion.FULL_VERSION}";
+        public static string UserAgent => $"nopCommerce-{NopVersion.CurrentVersion}";
 
         /// <summary>
         /// Gets the session key to get process payment request
@@ -76,7 +76,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce
         /// <summary>
         /// Gets webhook event names to subscribe
         /// </summary>
-        public static List<string> WebhookEventNames => new()
+        public static List<string> WebhookEventNames => new List<string>
         {
             "PAYMENT.CAPTURE.COMPLETED",                //a capture has been successfully completed
             "PAYMENT.CAPTURE.DENIED",                   //a capture has been denied
@@ -99,13 +99,13 @@ namespace Nop.Plugin.Payments.PayPalCommerce
         /// Gets a list of currencies that do not support decimals. 
         /// Refer to https://developer.paypal.com/docs/integration/direct/rest/currency-codes/ for more information 
         /// </summary>
-        public static List<string> CurrenciesWithoutDecimals => new() { "HUF", "JPY", "TWD" };
+        public static List<string> CurrenciesWithoutDecimals => new List<string> { "HUF", "JPY", "TWD" };
 
         /// <summary>
         /// Gets a list of countries that supported Pay Later feature
         /// Refer to https://developer.paypal.com/docs/checkout/pay-later/us/#eligibility for more information 
         /// </summary>
-        public static List<string> PayLaterSupportedCountries => new() { "US", "AU", "DE", "ES", "FR", "GB", "IT" };
+        public static List<string> PayLaterSupportedCountries => new List<string> { "US", "AU", "DE", "ES", "FR", "GB", "IT" };
 
         #region Route names
 

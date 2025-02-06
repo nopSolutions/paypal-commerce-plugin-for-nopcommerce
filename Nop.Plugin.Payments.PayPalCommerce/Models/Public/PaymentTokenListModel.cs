@@ -6,7 +6,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Models.Public
     /// <summary>
     /// Represents the payment token list model
     /// </summary>
-    public record PaymentTokenListModel : BaseNopModel
+    public class PaymentTokenListModel : BaseNopModel
     {
         #region Properties
 
@@ -14,7 +14,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Models.Public
 
         public string Error { get; set; }
 
-        public List<PaymentTokenModel> PaymentTokens { get; set; } = new();
+        public List<PaymentTokenModel> PaymentTokens { get; set; } = new List<PaymentTokenModel>();
 
         #endregion
     }

@@ -6,7 +6,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Models.Public
     /// <summary>
     /// Represents the Pay Later messages model
     /// </summary>
-    public record MessagesModel : BaseNopModel
+    public class MessagesModel : BaseNopModel
     {
         #region Properties
 

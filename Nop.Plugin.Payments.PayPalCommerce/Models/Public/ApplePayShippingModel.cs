@@ -3,7 +3,7 @@
     /// <summary>
     /// Represents the Apple Pay shipping model
     /// </summary>
-    public record ApplePayShippingModel : ApplePayModel
+    public class ApplePayShippingModel : ApplePayModel
     {
         #region Properties
 

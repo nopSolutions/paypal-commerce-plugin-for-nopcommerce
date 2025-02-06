@@ -5,7 +5,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Models.Admin
     /// <summary>
     /// Represents the authentication model
     /// </summary>
-    public record AuthenticationModel : BaseNopModel
+    public class AuthenticationModel : BaseNopModel
     {
         #region Properties
 

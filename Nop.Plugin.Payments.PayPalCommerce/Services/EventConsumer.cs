@@ -1,6 +1,5 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nop.Core.Domain.Gdpr;
 using Nop.Core.Domain.Shipping;
@@ -9,7 +8,6 @@ using Nop.Services.Common;
 using Nop.Services.Events;
 using Nop.Services.Localization;
 using Nop.Services.Shipping;
-using Nop.Web.Areas.Admin.Models.Common;
 using Nop.Web.Areas.Admin.Models.Orders;
 using Nop.Web.Areas.Admin.Models.Payments;
 using Nop.Web.Framework.Events;
@@ -26,8 +24,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         IConsumer<ModelPreparedEvent<BaseNopModel>>,
         IConsumer<ModelReceivedEvent<BaseNopModel>>,
         IConsumer<EntityInsertedEvent<Shipment>>,
-        IConsumer<EntityUpdatedEvent<Shipment>>,
-        IConsumer<SystemWarningCreatedEvent>
+        IConsumer<EntityUpdatedEvent<Shipment>>
     {
         #region Fields
 
@@ -65,43 +62,41 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// Handle customer permanently deleted event
         /// </summary>
         /// <param name="eventMessage">Event message</param>
-        /// <returns>A task that represents the asynchronous operation</returns>
-        public async Task HandleEventAsync(CustomerPermanentlyDeleted eventMessage)
+        public void HandleEvent(CustomerPermanentlyDeleted eventMessage)
         {
             //delete customer's payment tokens
-            await _serviceManager.DeletePaymentTokensAsync(_settings, eventMessage.CustomerId);
+            _serviceManager.DeletePaymentTokens(_settings, eventMessage.CustomerId);
         }
 
         /// <summary>
         /// Handle model prepared event
         /// </summary>
         /// <param name="eventMessage">Event message</param>
-        /// <returns>A task that represents the asynchronous operation</returns>
-        public async Task HandleEventAsync(ModelPreparedEvent<BaseNopModel> eventMessage)
+        public void HandleEvent(ModelPreparedEvent<BaseNopModel> eventMessage)
         {
             //exclude the plugin from payment providers list, we'll display it another way
             if (eventMessage.Model is PaymentMethodListModel paymentMethodsModel)
                 paymentMethodsModel.Data = paymentMethodsModel.Data.Where(method => !string.Equals(method.SystemName, PayPalCommerceDefaults.SystemName));
 
-            if (eventMessage.Model is not CustomerNavigationModel navigationModel)
+            if (!(eventMessage.Model is CustomerNavigationModel navigationModel))
                 return;
 
-            var (active, _) = await _serviceManager.IsActiveAsync(_settings);
+            var (active, _) = _serviceManager.IsActive(_settings);
             if (!active)
                 return;
 
-            var (tokens, _) = await _serviceManager.GetPaymentTokensAsync(_settings);
+            var (tokens, _) = _serviceManager.GetPaymentTokens(_settings);
             if (!_settings.UseVault && !tokens.Any())
                 return;
 
             //add a new menu item in the customer navigation
             var orderItem = navigationModel.CustomerNavigationItems.FirstOrDefault(item => item.Tab == CustomerNavigationEnum.Orders);
             var position = navigationModel.CustomerNavigationItems.IndexOf(orderItem) + 1;
-            navigationModel.CustomerNavigationItems.Insert(position, new()
+            navigationModel.CustomerNavigationItems.Insert(position, new CustomerNavigationItemModel
             {
                 RouteName = PayPalCommerceDefaults.Route.PaymentTokens,
                 ItemClass = "paypal-payment-tokens",
-                Title = await _localizationService.GetResourceAsync("Plugins.Payments.PayPalCommerce.PaymentTokens")
+                Title = _localizationService.GetResource("Plugins.Payments.PayPalCommerce.PaymentTokens")
             });
         }
 
@@ -109,10 +104,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// Handle model received event
         /// </summary>
         /// <param name="eventMessage">Event message</param>
-        /// <returns>A task that represents the asynchronous operation</returns>
-        public async Task HandleEventAsync(ModelReceivedEvent<BaseNopModel> eventMessage)
+        public void HandleEvent(ModelReceivedEvent<BaseNopModel> eventMessage)
         {
-            if (eventMessage.Model is not ShipmentModel shipmentModel)
+            if (!(eventMessage.Model is ShipmentModel shipmentModel))
                 return;
 
             if (!PayPalCommerceServiceManager.IsConnected(_settings))
@@ -125,9 +119,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             if (_httpContextAccessor.HttpContext.Request.Form.TryGetValue(PayPalCommerceDefaults.ShipmentCarrierAttribute, out var carrierValue))
             {
                 var carrier = carrierValue.ToString();
-                var shipment = await _shipmentService.GetShipmentByIdAsync(shipmentModel.Id);
-                if (shipment is not null)
-                    await _genericAttributeService.SaveAttributeAsync(shipment, PayPalCommerceDefaults.ShipmentCarrierAttribute, carrier);
+                var shipment = _shipmentService.GetShipmentById(shipmentModel.Id);
+                if (shipment != null)
+                    _genericAttributeService.SaveAttribute(shipment, PayPalCommerceDefaults.ShipmentCarrierAttribute, carrier);
                 else if (!string.IsNullOrEmpty(carrier))
                 {
                     //when we add a new shipping, it's not in the db yet and we cannot save a generic attribute to it,
@@ -141,8 +135,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// Handle shipment inserted event
         /// </summary>
         /// <param name="eventMessage">Event message</param>
-        /// <returns>A task that represents the asynchronous operation</returns>
-        public async Task HandleEventAsync(EntityInsertedEvent<Shipment> eventMessage)
+        public void HandleEvent(EntityInsertedEvent<Shipment> eventMessage)
         {
             if (!PayPalCommerceServiceManager.IsConnected(_settings))
                 return;
@@ -153,20 +146,19 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             //move the saved data from context to the generic attribute
             if (_httpContextAccessor.HttpContext.Items.TryGetValue(PayPalCommerceDefaults.ShipmentCarrierAttribute, out var carrier))
             {
-                await _genericAttributeService
-                    .SaveAttributeAsync(eventMessage.Entity, PayPalCommerceDefaults.ShipmentCarrierAttribute, carrier.ToString());
+                _genericAttributeService
+                    .SaveAttribute(eventMessage.Entity, PayPalCommerceDefaults.ShipmentCarrierAttribute, carrier.ToString());
             }
 
             if (!string.IsNullOrEmpty(eventMessage.Entity.TrackingNumber))
-                await _serviceManager.SetTrackingAsync(_settings, eventMessage.Entity);
+                _serviceManager.SetTracking(_settings, eventMessage.Entity);
         }
 
         /// <summary>
         /// Handle shipment updated event
         /// </summary>
         /// <param name="eventMessage">Event message</param>
-        /// <returns>A task that represents the asynchronous operation</returns>
-        public async Task HandleEventAsync(EntityUpdatedEvent<Shipment> eventMessage)
+        public void HandleEvent(EntityUpdatedEvent<Shipment> eventMessage)
         {
             if (!PayPalCommerceServiceManager.IsConnected(_settings))
                 return;
@@ -175,31 +167,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 return;
 
             if (!string.IsNullOrEmpty(eventMessage.Entity.TrackingNumber))
-                await _serviceManager.SetTrackingAsync(_settings, eventMessage.Entity);
-        }
-
-        /// <summary>
-        /// Handle system warning created event
-        /// </summary>
-        /// <param name="eventMessage">Event message</param>
-        /// <returns>A task that represents the asynchronous operation</returns>
-        public Task HandleEventAsync(SystemWarningCreatedEvent eventMessage)
-        {
-            if (!PayPalCommerceServiceManager.IsConnected(_settings))
-                return Task.CompletedTask;
-
-            if (!_settings.MerchantIdRequired)
-                return Task.CompletedTask;
-
-            //the plugin was updated, but no merchant ID was specified
-            var warning = _settings.SetCredentialsManually
-                ? "PayPal Commerce plugin. Merchant ID is required for payments, please specify it on the plugin configuration page"
-                : "PayPal Commerce plugin. PayPal account ID of the merchant was not set correctly when updating the plugin. " +
-                    "You should either complete onboarding process again on the plugin configuration page or " +
-                    "set the ID yourself on the All Settings page (you can find this ID in your PayPal account)";
-            eventMessage.SystemWarnings.Add(new() { Level = SystemWarningLevel.Warning, DontEncode = false, Text = warning });
-
-            return Task.CompletedTask;
+                _serviceManager.SetTracking(_settings, eventMessage.Entity);
         }
 
         #endregion

@@ -1,10 +1,9 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using Autofac;
 using Nop.Core.Configuration;
 using Nop.Core.Infrastructure;
 using Nop.Core.Infrastructure.DependencyManagement;
 using Nop.Plugin.Payments.PayPalCommerce.Factories;
 using Nop.Plugin.Payments.PayPalCommerce.Services;
-using Nop.Web.Framework.Infrastructure.Extensions;
 
 namespace Nop.Plugin.Payments.PayPalCommerce.Infrastructure
 {
@@ -16,16 +15,15 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Infrastructure
         /// <summary>
         /// Register services and interfaces
         /// </summary>
-        /// <param name="services">Collection of service descriptors</param>
+        /// <param name="builder">Container builder</param>
         /// <param name="typeFinder">Type finder</param>
-        /// <param name="appSettings">App settings</param>
-        public virtual void Register(IServiceCollection services, ITypeFinder typeFinder, AppSettings appSettings)
+        /// <param name="config">Config</param>
+        public void Register(ContainerBuilder builder, ITypeFinder typeFinder, NopConfig config)
         {
-            services.AddHttpClient<OnboardingHttpClient>().WithProxy();
-            services.AddHttpClient<PayPalCommerceHttpClient>().WithProxy();
-            services.AddScoped<PayPalCommerceModelFactory>();
-            services.AddScoped<PayPalCommerceServiceManager>();
-            services.AddScoped<PayPalTokenService>();
+            builder.RegisterType<PayPalCommerceHttpClient>().AsSelf().InstancePerLifetimeScope();
+            builder.RegisterType<PayPalCommerceModelFactory>().AsSelf().InstancePerLifetimeScope();
+            builder.RegisterType<PayPalCommerceServiceManager>().AsSelf().InstancePerLifetimeScope();
+            builder.RegisterType<PayPalTokenService>().AsSelf().InstancePerLifetimeScope();
         }
 
         /// <summary>

@@ -1,5 +1,4 @@
-﻿using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Nop.Plugin.Payments.PayPalCommerce.Services;
 using Nop.Web.Framework.Components;
 using Nop.Web.Framework.Infrastructure;
@@ -37,16 +36,13 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Components.Admin
         /// </summary>
         /// <param name="widgetZone">Widget zone name</param>
         /// <param name="additionalData">Additional data</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the view component result
-        /// </returns>
-        public async Task<IViewComponentResult> InvokeAsync(string widgetZone, object additionalData)
+        /// <returns>The view component result</returns>
+        public IViewComponentResult Invoke(string widgetZone, object additionalData)
         {
             if (!widgetZone.Equals(AdminWidgetZones.PaymentMethodListTop))
                 return Content(string.Empty);
 
-            var (active, _) = await _serviceManager.IsActiveAsync(_settings);
+            var (active, _) = _serviceManager.IsActive(_settings);
 
             return View("~/Plugins/Payments.PayPalCommerce/Views/Admin/_PaymentMethod.cshtml", active);
         }

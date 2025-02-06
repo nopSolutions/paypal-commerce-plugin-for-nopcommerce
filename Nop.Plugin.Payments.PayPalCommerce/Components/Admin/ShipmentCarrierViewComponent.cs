@@ -1,5 +1,4 @@
-﻿using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Nop.Plugin.Payments.PayPalCommerce.Models.Admin;
 using Nop.Plugin.Payments.PayPalCommerce.Services;
 using Nop.Services.Common;
@@ -47,13 +46,10 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Components.Admin
         /// </summary>
         /// <param name="widgetZone">Widget zone</param>
         /// <param name="additionalData">Additional parameters</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the view component result
-        /// </returns>
-        public async Task<IViewComponentResult> InvokeAsync(string widgetZone, object additionalData)
+        /// <returns>The view component result</returns>
+        public IViewComponentResult Invoke(string widgetZone, object additionalData)
         {
-            var (active, _) = await _serviceManager.IsActiveAsync(_settings);
+            var (active, _) = _serviceManager.IsActive(_settings);
             if (!active)
                 return Content(string.Empty);
 
@@ -63,15 +59,15 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Components.Admin
             if (!widgetZone.Equals(AdminWidgetZones.OrderShipmentDetailsButtons) && !widgetZone.Equals(AdminWidgetZones.OrderShipmentAddButtons))
                 return Content(string.Empty);
 
-            if (additionalData is not ShipmentModel shipmentModel)
+            if (!(additionalData is ShipmentModel shipmentModel))
                 return Content(string.Empty);
 
-            var shipment = await _shipmentService.GetShipmentByIdAsync(shipmentModel.Id);
+            var shipment = _shipmentService.GetShipmentById(shipmentModel.Id);
             var model = new ShipmentCarrierModel
             {
                 TrackingNumber = shipmentModel.TrackingNumber,
-                PayPalCommerceShipmentCarrier = shipment is not null
-                    ? await _genericAttributeService.GetAttributeAsync<string>(shipment, PayPalCommerceDefaults.ShipmentCarrierAttribute)
+                PayPalCommerceShipmentCarrier = shipment != null
+                    ? _genericAttributeService.GetAttribute<string>(shipment, PayPalCommerceDefaults.ShipmentCarrierAttribute)
                     : null
             };
 

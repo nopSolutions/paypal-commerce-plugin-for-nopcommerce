@@ -208,11 +208,6 @@ namespace Nop.Plugin.Payments.PayPalCommerce
         /// </summary>
         public string PayLaterConfig { get; set; }
 
-        /// <summary>
-        /// Gets or sets a value indicating whether the plugin was updated but no merchant ID was specified. If not, the merchant must specify it
-        /// </summary>
-        public bool MerchantIdRequired { get; set; }
-
         #endregion
 
         #endregion

@@ -3,7 +3,7 @@
     /// <summary>
     /// Represents the order completed model
     /// </summary>
-    public record OrderCompletedModel : OrderModel
+    public class OrderCompletedModel : OrderModel
     {
         public string Warning { get; set; }
     }

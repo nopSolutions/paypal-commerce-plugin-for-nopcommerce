@@ -16,10 +16,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Components.Public
         /// </summary>
         /// <param name="widgetZone">Widget zone name</param>
         /// <param name="additionalData">Additional data</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the view component result
-        /// </returns>
+        /// <returns>The view component result</returns>
         public IViewComponentResult Invoke(string widgetZone, object additionalData)
         {
             return View("~/Plugins/Payments.PayPalCommerce/Views/Public/PaymentInfo.cshtml");

@@ -5,7 +5,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Models.Public
     /// <summary>
     /// Represents the order model
     /// </summary>
-    public record OrderModel : BaseNopModel
+    public class OrderModel : BaseNopModel
     {
         #region Properties
 

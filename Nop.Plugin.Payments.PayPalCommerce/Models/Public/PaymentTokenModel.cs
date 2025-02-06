@@ -5,7 +5,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Models.Public
     /// <summary>
     /// Represents the payment token model
     /// </summary>
-    public record PaymentTokenModel : BaseNopEntityModel
+    public class PaymentTokenModel : BaseNopEntityModel
     {
         #region Properties
 

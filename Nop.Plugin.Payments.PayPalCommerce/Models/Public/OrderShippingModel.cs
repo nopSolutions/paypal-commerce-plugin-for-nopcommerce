@@ -3,7 +3,7 @@
     /// <summary>
     /// Represents the order shipping model
     /// </summary>
-    public record OrderShippingModel : OrderModel
+    public class OrderShippingModel : OrderModel
     {
         #region Properties
 

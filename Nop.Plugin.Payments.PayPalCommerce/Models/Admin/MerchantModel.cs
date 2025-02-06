@@ -6,7 +6,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Models.Admin
     /// <summary>
     /// Represents the merchant model
     /// </summary>
-    public record MerchantModel : BaseNopModel
+    public class MerchantModel : BaseNopModel
     {
         #region Properties
 
@@ -30,7 +30,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Models.Admin
 
         public bool ConfiguratorSupported { get; set; }
 
-        public (List<string> Success, List<string> Warning, List<string> Error) Messages { get; set; } = new();
+        public (List<string> Success, List<string> Warning, List<string> Error) Messages { get; set; } = (new List<string>(), new List<string>(), new List<string>());
 
         #endregion
     }

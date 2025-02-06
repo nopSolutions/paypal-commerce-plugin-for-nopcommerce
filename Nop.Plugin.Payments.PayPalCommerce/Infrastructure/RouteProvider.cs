@@ -1,15 +1,19 @@
-﻿using Microsoft.AspNetCore.Builder;
+﻿using System.Linq;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
+using Nop.Core.Domain.Localization;
+using Nop.Data;
+using Nop.Services.Localization;
 using Nop.Web.Framework;
 using Nop.Web.Framework.Mvc.Routing;
-using Nop.Web.Infrastructure;
 
 namespace Nop.Plugin.Payments.PayPalCommerce.Infrastructure
 {
     /// <summary>
     /// Represents the plugin route provider
     /// </summary>
-    public class RouteProvider : BaseRouteProvider, IRouteProvider
+    public class RouteProvider : IRouteProvider
     {
         /// <summary>
         /// Register routes
@@ -17,8 +21,17 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Infrastructure
         /// <param name="endpointRouteBuilder">Route builder</param>
         public void RegisterRoutes(IEndpointRouteBuilder endpointRouteBuilder)
         {
-            var lang = GetLanguageRoutePattern();
-
+            var lang = string.Empty;
+            if (DataSettingsManager.DatabaseIsInstalled)
+            {
+                var localizationSettings = endpointRouteBuilder.ServiceProvider.GetRequiredService<LocalizationSettings>();
+                if (localizationSettings.SeoFriendlyUrlsForLanguagesEnabled)
+                {
+                    var langservice = endpointRouteBuilder.ServiceProvider.GetRequiredService<ILanguageService>();
+                    var languages = langservice.GetAllLanguages().ToList();
+                    lang = "{language:lang=" + languages.FirstOrDefault().UniqueSeoCode + "}";
+                }
+            }
             endpointRouteBuilder.MapControllerRoute(name: PayPalCommerceDefaults.Route.Configuration,
                 pattern: "Admin/PayPalCommerce/Configure",
                 defaults: new { controller = "PayPalCommerce", action = "Configure", area = AreaNames.Admin });

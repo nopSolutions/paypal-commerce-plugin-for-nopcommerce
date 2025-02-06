@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using Nop.Data;
 using Nop.Plugin.Payments.PayPalCommerce.Domain;
 
@@ -37,64 +36,54 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// <param name="vaultId">Vault identifier; pass null to load all tokens</param>
         /// <param name="vaultCustomerId">Vault customer identifier; pass null to load all tokens</param>
         /// <param name="type">Token type; pass null to load all tokens</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the list of payment tokens
-        /// </returns>
-        public async Task<IList<PayPalToken>> GetAllTokensAsync(string clientId, int customerId = 0,
+        /// <returns>The list of payment tokens</returns>
+        public IList<PayPalToken> GetAllTokens(string clientId, int customerId = 0,
             string vaultId = null, string vaultCustomerId = null, string type = null)
         {
-            return await _tokenRepository.GetAllAsync(query =>
-            {
-                query = query.Where(token => token.ClientId == clientId);
+            var query = _tokenRepository.Table.Where(token => token.ClientId == clientId);
 
-                if (customerId > 0)
-                    query = query.Where(token => token.CustomerId == customerId);
+            if (customerId > 0)
+                query = query.Where(token => token.CustomerId == customerId);
 
-                if (!string.IsNullOrEmpty(vaultId))
-                    query = query.Where(token => token.VaultId == vaultId);
+            if (!string.IsNullOrEmpty(vaultId))
+                query = query.Where(token => token.VaultId == vaultId);
 
-                if (!string.IsNullOrEmpty(vaultCustomerId))
-                    query = query.Where(token => token.VaultCustomerId == vaultCustomerId);
+            if (!string.IsNullOrEmpty(vaultCustomerId))
+                query = query.Where(token => token.VaultCustomerId == vaultCustomerId);
 
-                if (!string.IsNullOrEmpty(type))
-                    query = query.Where(token => token.Type == type);
+            if (!string.IsNullOrEmpty(type))
+                query = query.Where(token => token.Type == type);
 
-                return query;
-            }, null);
+            return query.ToList();
         }
 
         /// <summary>
         /// Get a payment token by identifier
         /// </summary>
         /// <param name="id">Token identifier</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the payment token
-        /// </returns>
-        public async Task<PayPalToken> GetByIdAsync(int id)
+        /// <returns>The payment token</returns>
+        public PayPalToken GetById(int id)
         {
-            return await _tokenRepository.GetByIdAsync(id, null);
+            return _tokenRepository.GetById(id);
         }
 
         /// <summary>
         /// Insert the payment token
         /// </summary>
         /// <param name="token">Payment token</param>
-        /// <returns>A task that represents the asynchronous operation</returns>
-        public async Task InsertAsync(PayPalToken token)
+        public void Insert(PayPalToken token)
         {
             //whether a token with such parameters already exists
-            var tokens = await GetAllTokensAsync(token.ClientId, token.CustomerId);
+            var tokens = GetAllTokens(token.ClientId, token.CustomerId);
             var existingToken = tokens
                 .FirstOrDefault(existing => existing.VaultId == token.VaultId && existing.VaultCustomerId == token.VaultCustomerId);
-            if (existingToken is not null)
+            if (existingToken != null)
             {
                 //then just update transaction id
                 if (!string.Equals(existingToken.TransactionId, token.TransactionId, StringComparison.InvariantCultureIgnoreCase))
                 {
                     existingToken.TransactionId = token.TransactionId;
-                    await UpdateAsync(existingToken);
+                    Update(existingToken);
                 }
 
                 return;
@@ -104,30 +93,28 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 token.IsPrimaryMethod = true;
 
             //or insert a new one
-            await _tokenRepository.InsertAsync(token, false);
+            _tokenRepository.Insert(token);
         }
 
         /// <summary>
         /// Update the payment token
         /// </summary>
         /// <param name="token">Payment token</param>
-        /// <returns>A task that represents the asynchronous operation</returns>
-        public async Task UpdateAsync(PayPalToken token)
+        public void Update(PayPalToken token)
         {
-            await _tokenRepository.UpdateAsync(token, false);
+            _tokenRepository.Update(token);
         }
 
         /// <summary>
         /// Delete the payment token
         /// </summary>
         /// <param name="token">Payment token</param>
-        /// <returns>A task that represents the asynchronous operation</returns>
-        public async Task DeleteAsync(PayPalToken token)
+        public void Delete(PayPalToken token)
         {
-            await _tokenRepository.DeleteAsync(token, false);
+            _tokenRepository.Delete(token);
 
             //mark one of the remaining tokens as default
-            var tokens = await GetAllTokensAsync(token.ClientId, token.CustomerId);
+            var tokens = GetAllTokens(token.ClientId, token.CustomerId);
             if (tokens.Any(existing => existing.IsPrimaryMethod))
                 return;
 
@@ -136,17 +123,16 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 return;
 
             existingToken.IsPrimaryMethod = true;
-            await UpdateAsync(existingToken);
+            Update(existingToken);
         }
 
         /// <summary>
         /// Delete payment tokens
         /// </summary>
         /// <param name="token">Payment tokens</param>
-        /// <returns>A task that represents the asynchronous operation</returns>
-        public async Task DeleteAsync(IList<PayPalToken> tokens)
+        public void Delete(IList<PayPalToken> tokens)
         {
-            await _tokenRepository.DeleteAsync(tokens, false);
+            _tokenRepository.Delete(tokens);
         }
 
         #endregion

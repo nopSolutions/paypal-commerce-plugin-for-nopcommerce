@@ -3,7 +3,7 @@
     /// <summary>
     /// Represents the order approved model
     /// </summary>
-    public record OrderApprovedModel : OrderModel
+    public class OrderApprovedModel : OrderModel
     {
         #region Properties
 

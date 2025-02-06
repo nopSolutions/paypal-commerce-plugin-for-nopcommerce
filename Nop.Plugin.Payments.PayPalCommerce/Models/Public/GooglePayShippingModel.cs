@@ -5,7 +5,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Models.Public
     /// <summary>
     /// Represents the Google Pay shipping model
     /// </summary>
-    public record GooglePayShippingModel : GooglePayModel
+    public class GooglePayShippingModel : GooglePayModel
     {
         #region Properties
 
@@ -19,7 +19,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Models.Public
 
         public string OptionId { get; set; }
 
-        public List<(string Id, string Label, string Description)> Options { get; set; } = new();
+        public List<(string Id, string Label, string Description)> Options { get; set; } = new List<(string, string, string)>();
 
         #endregion
     }

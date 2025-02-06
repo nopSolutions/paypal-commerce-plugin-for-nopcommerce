@@ -38,7 +38,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Domain
         /// Gets or sets the street portion of the address for the contact
         /// </summary>
         [JsonProperty(PropertyName = "addressLines")]
-        public List<string> AddressLines { get; set; } = new();
+        public List<string> AddressLines { get; set; } = new List<string>();
 
         /// <summary>
         /// Gets or sets the city for the contact

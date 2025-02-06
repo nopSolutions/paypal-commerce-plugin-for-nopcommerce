@@ -5,12 +5,12 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.AspNetCore.WebUtilities;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Nop.Core;
 using Nop.Core.Domain.Catalog;
 using Nop.Core.Domain.Customers;
@@ -26,6 +26,7 @@ using Nop.Plugin.Payments.PayPalCommerce.Services.Api.Authentication;
 using Nop.Plugin.Payments.PayPalCommerce.Services.Api.Identity;
 using Nop.Plugin.Payments.PayPalCommerce.Services.Api.Models;
 using Nop.Plugin.Payments.PayPalCommerce.Services.Api.Models.Enums;
+using Nop.Plugin.Payments.PayPalCommerce.Services.Api.Models.PaymentSources;
 using Nop.Plugin.Payments.PayPalCommerce.Services.Api.Onboarding;
 using Nop.Plugin.Payments.PayPalCommerce.Services.Api.Orders;
 using Nop.Plugin.Payments.PayPalCommerce.Services.Api.Payments;
@@ -184,16 +185,13 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// <typeparam name="TResult">Result type</typeparam>
         /// <param name="function">Function</param>
         /// <param name="logErrors">Whether to log errors</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the result; error message if exists
-        /// </returns>
-        private async Task<(TResult Result, string Error)> HandleFunctionAsync<TResult>(Func<Task<TResult>> function, bool logErrors = true)
+        /// <returns>The result; error message if exists</returns>
+        private (TResult Result, string Error) HandleFunction<TResult>(Func<TResult> function, bool logErrors = true)
         {
             try
             {
                 //invoke function
-                return (await function(), default);
+                return (function(), default);
             }
             catch (Exception exception)
             {
@@ -202,8 +200,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 {
                     var logMessage = $"{PayPalCommerceDefaults.SystemName} error:{Environment.NewLine}{exception.Message}";
                     var exceptionToLog = exception is NopException nopException ? nopException.InnerException ?? nopException : exception;
-                    var customer = await _workContext.GetCurrentCustomerAsync();
-                    await _logger.ErrorAsync(logMessage, exceptionToLog, customer);
+                    var customer = _workContext.CurrentCustomer;
+                    _logger.Error(logMessage, exceptionToLog, customer);
                 }
 
                 return (default, exception.Message);
@@ -219,30 +217,24 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// <param name="customer">Customer</param>
         /// <param name="currencyCode">Currency code</param>
         /// <param name="productId">Product id</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the amount value
-        /// </returns>
-        private async Task<string> PrepareMessagesAmountAsync(ButtonPlacement placement, Customer customer, string currencyCode, int? productId)
+        /// <returns>The amount value</returns>
+        private string PrepareMessagesAmount(ButtonPlacement placement, Customer customer, string currencyCode, int? productId)
         {
-            var store = await _storeContext.GetCurrentStoreAsync();
-            var product = await _productService.GetProductByIdAsync(productId ?? 0);
-            var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+            var store = _storeContext.CurrentStore;
+            var product = _productService.GetProductById(productId ?? 0);
+            var cart = _shoppingCartService.GetShoppingCart(customer, ShoppingCartType.ShoppingCart, store.Id);
 
-            var (_, _, _, subTotal, _) = await _orderTotalCalculationService.GetShoppingCartSubTotalAsync(cart, true);
+            _orderTotalCalculationService.GetShoppingCartSubTotal(cart, true, out _, out _, out _, out var subTotal);
 
             var amount = placement switch
             {
                 ButtonPlacement.Cart => subTotal,
-                ButtonPlacement.Product when product is not null
-                    => (await _priceCalculationService.GetFinalPriceAsync(product, customer)).finalPrice, //+ subTotal,
-                ButtonPlacement.PaymentMethod
-                    => (await _orderTotalCalculationService.GetShoppingCartTotalAsync(cart, null, usePaymentMethodAdditionalFee: false))
-                        .shoppingCartTotal ?? subTotal,
+                ButtonPlacement.Product when product != null => _priceCalculationService.GetFinalPrice(product, customer), //+ subTotal,
+                ButtonPlacement.PaymentMethod => _orderTotalCalculationService.GetShoppingCartTotal(cart, null, usePaymentMethodAdditionalFee: false) ?? subTotal,
                 _ => (decimal?)null
             };
 
-            return amount is not null ? PrepareMoney(amount.Value, currencyCode).Value : null;
+            return amount != null ? PrepareMoney(amount.Value, currencyCode).Value : null;
         }
 
         #endregion
@@ -258,7 +250,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         private static Money PrepareMoney(decimal value, string currencyCode)
         {
             var format = PayPalCommerceDefaults.CurrenciesWithoutDecimals.Contains(currencyCode.ToUpper()) ? "0" : "0.00";
-            return new()
+            return new Money
             {
                 CurrencyCode = currencyCode,
                 Value = value.ToString(format, CultureInfo.InvariantCulture)
@@ -286,7 +278,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         private ExperienceContext PrepareOrderContext(PayPalCommerceSettings settings, CartDetails details, string orderGuid, bool isApplePay = false)
         {
             var urlHelper = _urlHelperFactory.GetUrlHelper(_actionContextAccessor.ActionContext);
-            var protocol = _webHelper.GetCurrentRequestProtocol();
+            var protocol = _webHelper.CurrentRequestProtocol;
 
             var shippingPreference = ShippingPreferenceType.NO_SHIPPING.ToString().ToUpper();
             if (details.ShippingIsRequired)
@@ -296,7 +288,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     : ShippingPreferenceType.GET_FROM_FILE.ToString().ToUpper();
             }
 
-            return new()
+            return new ExperienceContext
             {
                 //Locale = null, //PayPal auto detects this
                 BrandName = CommonHelper.EnsureMaximumLength(details.Store.Name, 127),
@@ -307,7 +299,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 CancelUrl = details.Placement switch
                 {
                     ButtonPlacement.PaymentMethod => urlHelper.RouteUrl(PayPalCommerceDefaults.Route.PaymentInfo, null, protocol),
-                    ButtonPlacement.Cart or ButtonPlacement.Product => urlHelper.RouteUrl(PayPalCommerceDefaults.Route.ShoppingCart, null, protocol),
+                    ButtonPlacement.Cart => urlHelper.RouteUrl(PayPalCommerceDefaults.Route.ShoppingCart, null, protocol),
+                    ButtonPlacement.Product => urlHelper.RouteUrl(PayPalCommerceDefaults.Route.ShoppingCart, null, protocol),
                     _ => null
                 },
                 ReturnUrl = urlHelper.RouteUrl(PayPalCommerceDefaults.Route.ConfirmOrder, new { token = orderGuid, approve = true }, protocol),
@@ -322,24 +315,21 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// Prepare order billing details
         /// </summary>
         /// <param name="details">Shopping cart details</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the payer with the billing details
-        /// </returns>
-        private async Task<Payer> PrepareBillingDetailsAsync(CartDetails details)
+        /// <returns>The payer with the billing details</returns>
+        private Payer PrepareBillingDetails(CartDetails details)
         {
             var customer = details.Customer;
             var address = details.BillingAddress;
             var isPaymentMethodPage = details.Placement == ButtonPlacement.PaymentMethod;
-            var firstName = await _genericAttributeService.GetAttributeAsync<string>(customer, NopCustomerDefaults.FirstNameAttribute);
-            var lastName = await _genericAttributeService.GetAttributeAsync<string>(customer, NopCustomerDefaults.LastNameAttribute);
-            var dateOfBirth = await _genericAttributeService.GetAttributeAsync<string>(customer, NopCustomerDefaults.DateOfBirthAttribute);
-            var stateId = await _genericAttributeService.GetAttributeAsync<int>(customer, NopCustomerDefaults.StateProvinceIdAttribute);
-            var countryId = await _genericAttributeService.GetAttributeAsync<int>(customer, NopCustomerDefaults.CountryIdAttribute);
-            var line1 = await _genericAttributeService.GetAttributeAsync<string>(customer, NopCustomerDefaults.StreetAddressAttribute);
-            var line2 = await _genericAttributeService.GetAttributeAsync<string>(customer, NopCustomerDefaults.StreetAddress2Attribute);
-            var city = await _genericAttributeService.GetAttributeAsync<string>(customer, NopCustomerDefaults.CityAttribute);
-            var zip = await _genericAttributeService.GetAttributeAsync<string>(customer, NopCustomerDefaults.ZipPostalCodeAttribute);
+            var firstName = _genericAttributeService.GetAttribute<string>(customer, NopCustomerDefaults.FirstNameAttribute);
+            var lastName = _genericAttributeService.GetAttribute<string>(customer, NopCustomerDefaults.LastNameAttribute);
+            var dateOfBirth = _genericAttributeService.GetAttribute<string>(customer, NopCustomerDefaults.DateOfBirthAttribute);
+            var stateId = _genericAttributeService.GetAttribute<int>(customer, NopCustomerDefaults.StateProvinceIdAttribute);
+            var countryId = _genericAttributeService.GetAttribute<int>(customer, NopCustomerDefaults.CountryIdAttribute);
+            var line1 = _genericAttributeService.GetAttribute<string>(customer, NopCustomerDefaults.StreetAddressAttribute);
+            var line2 = _genericAttributeService.GetAttribute<string>(customer, NopCustomerDefaults.StreetAddress2Attribute);
+            var city = _genericAttributeService.GetAttribute<string>(customer, NopCustomerDefaults.CityAttribute);
+            var zip = _genericAttributeService.GetAttribute<string>(customer, NopCustomerDefaults.ZipPostalCodeAttribute);
 
             var email = CommonHelper.EnsureMaximumLength(isPaymentMethodPage ? address.Email : customer.Email, 254);
             var name = new Name
@@ -348,14 +338,14 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 Surname = CommonHelper.EnsureMaximumLength(isPaymentMethodPage ? address.LastName : lastName, 140)
             };
             //phone number format is unpredictable
-            //var customerPhone = await _genericAttributeService.GetAttributeAsync<string>(customer, NopCustomerDefaults.PhoneAttribute);
+            //var customerPhone = _genericAttributeService.GetAttribute<string>(customer, NopCustomerDefaults.PhoneAttribute);
             //var phone = isPaymentMethodPage
             //    ? (!string.IsNullOrEmpty(address.PhoneNumber) ? new Phone { PhoneNumber = new() { NationalNumber = CommonHelper.EnsureMaximumLength(CommonHelper.EnsureNumericOnly(address.PhoneNumber), 14) } } : null)
             //    : !string.IsNullOrEmpty(customerPhone) ? new Phone { PhoneNumber = new() { NationalNumber = CommonHelper.EnsureMaximumLength(CommonHelper.EnsureNumericOnly(customerPhone), 14) } } : null;
             var birthDate = DateTime.TryParse(dateOfBirth, out var dateOfBirthValue) ? dateOfBirthValue.ToString("yyyy-MM-dd") : null;
-            var country = await _countryService.GetCountryByIdAsync(isPaymentMethodPage ? address.CountryId ?? 0 : countryId);
-            var state = await _stateProvinceService
-                .GetStateProvinceByIdAsync(isPaymentMethodPage ? address.StateProvinceId ?? 0 : stateId);
+            var country = _countryService.GetCountryById(isPaymentMethodPage ? address.CountryId ?? 0 : countryId);
+            var state = _stateProvinceService
+                .GetStateProvinceById(isPaymentMethodPage ? address.StateProvinceId ?? 0 : stateId);
             var billingAddress = new Address
             {
                 AddressLine1 = CommonHelper.EnsureMaximumLength(isPaymentMethodPage ? address.Address1 : line1, 300),
@@ -370,36 +360,30 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             if (string.IsNullOrEmpty(billingAddress.CountryCode))
                 billingAddress = null;
 
-            return new() { EmailAddress = email, Name = name, BirthDate = birthDate, Address = billingAddress };
+            return new Payer { EmailAddress = email, Name = name, BirthDate = birthDate, Address = billingAddress };
         }
 
         /// <summary>
         /// Prepare order items
         /// </summary>
         /// <param name="details">Shopping cart details</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the list of purchase items
-        /// </returns>
-        private async Task<List<Item>> PrepareOrderItemsAsync(CartDetails details)
+        /// <returns>The list of purchase items</returns>
+        private List<Item> PrepareOrderItems(CartDetails details)
         {
             //cart items
             var urlHelper = _urlHelperFactory.GetUrlHelper(_actionContextAccessor.ActionContext);
-            var items = await details.Cart.SelectAwait(async item =>
+            var items = details.Cart.Select(item =>
             {
-                var product = await _productService.GetProductByIdAsync(item.ProductId);
-                var sku = await _productService.FormatSkuAsync(product, item.AttributesXml);
-                var seName = await _urlRecordService.GetSeNameAsync(product);
-                var url = urlHelper.RouteUrl("Product", new { SeName = seName }, _webHelper.GetCurrentRequestProtocol());
+                var product = _productService.GetProductById(item.ProductId);
+                var sku = _productService.FormatSku(product, item.AttributesXml);
+                var seName = _urlRecordService.GetSeName(product);
+                var url = urlHelper.RouteUrl("Product", new { SeName = seName }, _webHelper.CurrentRequestProtocol);
+                var picture = _pictureService.GetProductPicture(product, item.AttributesXml);
+                var imageUrl = _pictureService.GetPictureUrl(ref picture);
 
-                var picture = await _pictureService.GetProductPictureAsync(product, item.AttributesXml);
-                //PayPal doesn't currently support WebP images
-                var ext = await _pictureService.GetFileExtensionFromMimeTypeAsync(picture.MimeType);
-                var (imageUrl, _) = ext != "webp" ? await _pictureService.GetPictureUrlAsync(picture) : default;
-
-                var (itemSubTotal, itemDiscount, _, _) = await _shoppingCartService.GetSubTotalAsync(item, true);
+                var itemSubTotal = _shoppingCartService.GetSubTotal(item, true, out var itemDiscount, out _, out _);
                 var unitPrice = itemSubTotal / item.Quantity;
-                var (unitPriceExclTax, _) = await _taxService.GetProductPriceAsync(product, unitPrice, false, details.Customer);
+                var unitPriceExclTax = _taxService.GetProductPrice(product, unitPrice, false, details.Customer, out _);
 
                 return new Item
                 {
@@ -414,19 +398,19 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     ImageUrl = imageUrl,
                     UnitAmount = PrepareMoney(unitPriceExclTax, details.CurrencyCode)
                 };
-            }).ToListAsync();
+            }).ToList();
 
             //and checkout attributes
-            var checkoutAttributes = await _genericAttributeService
-                .GetAttributeAsync<string>(details.Customer, NopCustomerDefaults.CheckoutAttributes, details.Store.Id);
+            var checkoutAttributes = _genericAttributeService
+                .GetAttribute<string>(details.Customer, NopCustomerDefaults.CheckoutAttributes, details.Store.Id);
             var checkoutAttributeValues = _checkoutAttributeParser.ParseCheckoutAttributeValues(checkoutAttributes);
-            await foreach (var (attribute, values) in checkoutAttributeValues)
+            foreach (var (attribute, values) in checkoutAttributeValues)
             {
-                await foreach (var attributeValue in values)
+                foreach (var attributeValue in values)
                 {
-                    var (attributePriceExclTax, _) = await _taxService.GetCheckoutAttributePriceAsync(attribute, attributeValue, false, details.Customer);
+                    var attributePriceExclTax = _taxService.GetCheckoutAttributePrice(attribute, attributeValue, false, details.Customer, out _);
 
-                    items.Add(new()
+                    items.Add(new Item
                     {
                         Name = CommonHelper.EnsureMaximumLength(attribute.Name, 127),
                         Description = CommonHelper.EnsureMaximumLength($"{attribute.Name} - {attributeValue.Name}", 127),
@@ -444,37 +428,33 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// </summary>
         /// <param name="details">Shopping cart details</param>
         /// <param name="items">Purchase items</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the order amount with breakdown
-        /// </returns>
-        private async Task<OrderMoney> PrepareOrderMoneyAsync(CartDetails details, List<Item> items)
+        /// <returns>The order amount with breakdown</returns>
+        private OrderMoney PrepareOrderMoney(CartDetails details, List<Item> items)
         {
             //in some rare cases we need an additional item to adjust the order total
             //this can happen due to complex discounts or a large order and related to rounding in calculations
             //PayPal uses two decimal places, while nopCommerce can use more complex types of rounding (configured for each currency separately) 
-            var adjustmentName = await _localizationService.GetResourceAsync("Plugins.Payments.PayPalCommerce.Order.Adjustment.Name");
-            var adjustmentDescription = await _localizationService.GetResourceAsync("Plugins.Payments.PayPalCommerce.Order.Adjustment.Description");
+            var adjustmentName = _localizationService.GetResource("Plugins.Payments.PayPalCommerce.Order.Adjustment.Name");
+            var adjustmentDescription = _localizationService.GetResource("Plugins.Payments.PayPalCommerce.Order.Adjustment.Description");
             if (items.FirstOrDefault(item => adjustmentName.Equals(item.Name) && adjustmentDescription.Equals(item.Description)) is Item adjustmentItem)
                 items.Remove(adjustmentItem);
 
-            var (total, _, _, _, _, _) = await _orderTotalCalculationService
-                .GetShoppingCartTotalAsync(details.Cart, usePaymentMethodAdditionalFee: false);
+            var total = _orderTotalCalculationService.GetShoppingCartTotal(details.Cart, usePaymentMethodAdditionalFee: false);
             if (total is null)
             {
                 if (details.Placement == ButtonPlacement.PaymentMethod)
                     throw new NopException("Shopping cart total couldn't be calculated now");
 
                 //on product and cart pages the total is not yet calculated, so use subtotal here
-                var (_, _, subTotal, _, _) = await _orderTotalCalculationService.GetShoppingCartSubTotalAsync(details.Cart, includingTax: false);
+                _orderTotalCalculationService.GetShoppingCartSubTotal(details.Cart, includingTax: false, out _, out _, out var subTotal, out _);
                 total = subTotal;
             }
             var orderTotal = PrepareMoney(total.Value, details.CurrencyCode);
 
-            var (shippingTotal, _, _) = await _orderTotalCalculationService.GetShoppingCartShippingTotalAsync(details.Cart, includingTax: false);
+            var shippingTotal = _orderTotalCalculationService.GetShoppingCartShippingTotal(details.Cart, includingTax: false);
             var orderShippingTotal = PrepareMoney(shippingTotal ?? decimal.Zero, details.CurrencyCode);
 
-            var (taxTotal, _) = await _orderTotalCalculationService.GetTaxTotalAsync(details.Cart, usePaymentMethodAdditionalFee: false);
+            var taxTotal = _orderTotalCalculationService.GetTaxTotal(details.Cart, usePaymentMethodAdditionalFee: false);
             var orderTaxTotal = PrepareMoney(taxTotal, details.CurrencyCode);
 
             var itemAdjustment = decimal.Zero;
@@ -495,7 +475,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 var unitAmount = PrepareMoney(itemAdjustment, details.CurrencyCode);
                 if (ConvertMoney(unitAmount) > decimal.Zero)
                 {
-                    items.Add(new()
+                    items.Add(new Item
                     {
                         Name = adjustmentName,
                         Description = adjustmentDescription,
@@ -505,11 +485,11 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 }
             }
 
-            return new()
+            return new OrderMoney
             {
                 CurrencyCode = details.CurrencyCode,
                 Value = orderTotal.Value,
-                Breakdown = new()
+                Breakdown = new OrderAmountBreakdown
                 {
                     ItemTotal = orderItemTotal,
                     TaxTotal = orderTaxTotal,
@@ -525,40 +505,37 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// <param name="details">Shopping cart details</param>
         /// <param name="selectedOptionId">Selected shipping option</param>
         /// <param name="isApplePay">Apple Pay payment</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the shipping details
-        /// </returns>
-        private async Task<Shipping> PrepareShippingDetailsAsync(CartDetails details, string selectedOptionId, bool isApplePay = false)
+        /// <returns>The shipping details</returns>
+        private Shipping PrepareShippingDetails(CartDetails details, string selectedOptionId, bool isApplePay = false)
         {
             if (!details.ShippingIsRequired)
                 return null;
 
             var shippingAddress = details.ShippingAddress;
-            var fullName = shippingAddress is not null && !details.IsPickup
+            var fullName = shippingAddress != null && !details.IsPickup
                 ? $"{shippingAddress.FirstName} {shippingAddress.LastName}"
                 : null;
             if (string.IsNullOrEmpty(fullName))
-                fullName = await _customerService.GetCustomerFullNameAsync(details.Customer);
+                fullName = _customerService.GetCustomerFullName(details.Customer);
 
             //if the shipping option type is set to PICKUP, then the full name should start with S2S meaning ship to store (for example, S2S My Store)
-            if (details.IsPickup && details.PickupPoint is not null)
+            if (details.IsPickup && details.PickupPoint != null)
                 fullName = $"S2S {details.PickupPoint.Name}";
 
-            var address = shippingAddress is not null ? new Address
+            var address = shippingAddress != null ? new Address
             {
                 AddressLine1 = CommonHelper.EnsureMaximumLength(shippingAddress.Address1, 300),
                 AddressLine2 = CommonHelper.EnsureMaximumLength(shippingAddress.Address2, 300),
                 AdminArea2 = CommonHelper.EnsureMaximumLength(shippingAddress.City, 120),
-                AdminArea1 = CommonHelper.EnsureMaximumLength((await _stateProvinceService
-                    .GetStateProvinceByAddressAsync(shippingAddress))?.Abbreviation, 300),
-                CountryCode = (await _countryService.GetCountryByIdAsync(shippingAddress.CountryId ?? 0))?.TwoLetterIsoCode,
+                AdminArea1 = CommonHelper.EnsureMaximumLength((_stateProvinceService
+                    .GetStateProvinceByAddress(shippingAddress))?.Abbreviation, 300),
+                CountryCode = (_countryService.GetCountryById(shippingAddress.CountryId ?? 0))?.TwoLetterIsoCode,
                 PostalCode = CommonHelper.EnsureMaximumLength(shippingAddress.ZipPostalCode, 60)
             } : null;
 
             var shipping = new Shipping
             {
-                Name = new() { FullName = CommonHelper.EnsureMaximumLength(fullName, 300), },
+                Name = new Name { FullName = CommonHelper.EnsureMaximumLength(fullName, 300), },
                 Address = address
             };
 
@@ -571,7 +548,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 return shipping;
             }
 
-            var (shippingOptions, pickupPoints) = await PrepareShippingOptionsAsync(details);
+            var (shippingOptions, pickupPoints) = PrepareShippingOptions(details);
             if (!shippingOptions?.Any() ?? true)
                 throw new NopException("No available shipping options");
 
@@ -591,30 +568,29 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             PickupPoint pickupPoint = null;
             if (selectedShippingOption.IsPickupInStore)
             {
-                pickupPoint = await pickupPoints.FirstOrDefaultAwaitAsync(async point =>
-                    string.Equals(await GetShippingOptionNameAsync(new() { Name = point.Name, IsPickupInStore = true }), selectedShippingOption.Name) &&
+                pickupPoint = pickupPoints.FirstOrDefault(point =>
+                    string.Equals(GetShippingOptionName(new NopShippingOption { Name = point.Name, IsPickupInStore = true }), selectedShippingOption.Name) &&
                     string.Equals(point.ProviderSystemName, selectedShippingOption.ShippingRateComputationMethodSystemName));
 
                 details.IsPickup = true;
                 details.PickupPoint = pickupPoint;
 
                 //if the shipping option type is set to PICKUP, then the full name should start with S2S meaning ship to store (for example, S2S My Store)
-                if (details.IsPickup && details.PickupPoint is not null)
+                if (details.IsPickup && details.PickupPoint != null)
                     shipping.Name.FullName = $"S2S {details.PickupPoint.Name}";
             }
             details.ShippingOption = selectedShippingOption;
 
             //save selected options in attributes
-            await _genericAttributeService
-                .SaveAttributeAsync(details.Customer, NopCustomerDefaults.SelectedShippingOptionAttribute, selectedShippingOption, details.Store.Id);
-            await _genericAttributeService
-                .SaveAttributeAsync(details.Customer, NopCustomerDefaults.SelectedPickupPointAttribute, pickupPoint, details.Store.Id);
+            _genericAttributeService
+                .SaveAttribute(details.Customer, NopCustomerDefaults.SelectedShippingOptionAttribute, selectedShippingOption, details.Store.Id);
+            _genericAttributeService
+                .SaveAttribute(details.Customer, NopCustomerDefaults.SelectedPickupPointAttribute, pickupPoint, details.Store.Id);
 
-            async Task<ShippingOption> convertOptionAsync(NopShippingOption option)
+            ShippingOption convertOption(NopShippingOption option)
             {
-                var (adjustedShippingRate, _) = await _orderTotalCalculationService
-                    .AdjustShippingRateAsync(option.Rate, details.Cart, option.IsPickupInStore);
-                //var (rate, _) = await _taxService.GetShippingPriceAsync(adjustedShippingRate, details.Customer);
+                var adjustedShippingRate = _orderTotalCalculationService.AdjustShippingRate(option.Rate, details.Cart, out _, option.IsPickupInStore);
+                //var (rate, _) = _taxService.GetShippingPrice(adjustedShippingRate, details.Customer);
                 //PayPal currently handles taxable shipping incorrectly, so we display shipping rates without tax, but it'll be included to tax total
                 var rate = adjustedShippingRate;
 
@@ -631,8 +607,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             }
 
             shipping.Options = details.Placement == ButtonPlacement.PaymentMethod
-                ? new() { await convertOptionAsync(selectedShippingOption) }
-                : await shippingOptions.SelectAwait(async option => await convertOptionAsync(option)).ToListAsync();
+                ? new List<ShippingOption> { convertOption(selectedShippingOption) }
+                : shippingOptions.Select(option => convertOption(option)).ToList();
 
             //set default shipping option
             (shipping.Options
@@ -647,11 +623,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// Prepare available shipping options
         /// </summary>
         /// <param name="details">Shopping cart details</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the list of shipping options; list of pickup points
-        /// </returns>
-        private async Task<(List<NopShippingOption> ShippingOptions, List<PickupPoint> PickupPoints)> PrepareShippingOptionsAsync(CartDetails details)
+        /// <returns>The list of shipping options; list of pickup points</returns>
+        private (List<NopShippingOption> ShippingOptions, List<PickupPoint> PickupPoints) PrepareShippingOptions(CartDetails details)
         {
             if (!details.ShippingIsRequired)
                 return (null, null);
@@ -665,32 +638,32 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             //pickup points
             if (_shippingSettings.AllowPickupInStore)
             {
-                var pickupPointProviders = await _pickupPluginManager.LoadActivePluginsAsync(details.Customer, details.Store.Id);
+                var pickupPointProviders = _pickupPluginManager.LoadActivePlugins(details.Customer, details.Store.Id);
                 if (pickupPointProviders.Any())
                 {
-                    var pickupPointsResponse = await _shippingService
-                        .GetPickupPointsAsync(details.Customer.BillingAddressId ?? 0, details.Customer, storeId: details.Store.Id);
+                    var pickupPointsResponse = _shippingService
+                        .GetPickupPoints(details.Customer.BillingAddressId ?? 0, details.Customer, storeId: details.Store.Id);
                     if (pickupPointsResponse.Success)
                     {
-                        shippingOptions.AddRange(await pickupPointsResponse.PickupPoints.SelectAwait(async point => new NopShippingOption
+                        shippingOptions.AddRange(pickupPointsResponse.PickupPoints.Select(point => new NopShippingOption
                         {
-                            Name = await GetShippingOptionNameAsync(new() { Name = point.Name, IsPickupInStore = true }),
+                            Name = GetShippingOptionName(new NopShippingOption { Name = point.Name, IsPickupInStore = true }),
                             Rate = point.PickupFee,
                             Description = point.Description,
                             ShippingRateComputationMethodSystemName = point.ProviderSystemName,
                             IsPickupInStore = true,
                             TransitDays = point.TransitDays
-                        }).ToListAsync());
+                        }).ToList());
                         pickupPoints.AddRange(pickupPointsResponse.PickupPoints);
                     }
                 }
             }
 
             //and shipping options
-            if (details.ShippingAddress is not null)
+            if (details.ShippingAddress != null)
             {
-                var shippingOptionResponse = await _shippingService
-                    .GetShippingOptionsAsync(details.Cart, details.ShippingAddress, details.Customer, storeId: details.Store.Id);
+                var shippingOptionResponse = _shippingService
+                    .GetShippingOptions(details.Cart, details.ShippingAddress, details.Customer, storeId: details.Store.Id);
                 if (shippingOptionResponse.Success)
                     shippingOptions.AddRange(shippingOptionResponse.ShippingOptions);
             }
@@ -708,11 +681,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// <param name="email">Customer email</param>
         /// <param name="selectedAddress">Selected shipping address</param>
         /// <param name="selectedOption">Selected shipping option</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the shipping details
-        /// </returns>
-        private async Task<Shipping> PrepareUpdatedShippingAsync(CartDetails details, string email,
+        /// <returns>The shipping details</returns>
+        private Shipping PrepareUpdatedShipping(CartDetails details, string email,
             (string City, string State, string Country, string PostalCode) selectedAddress,
             (string Id, string Type) selectedOption)
         {
@@ -720,9 +690,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             if (!string.IsNullOrEmpty(selectedAddress.City) && !string.IsNullOrEmpty(selectedAddress.State) &&
                 !string.IsNullOrEmpty(selectedAddress.Country) && !string.IsNullOrEmpty(selectedAddress.PostalCode))
             {
-                var country = await _countryService.GetCountryByTwoLetterIsoCodeAsync(selectedAddress.Country);
-                var state = await _stateProvinceService.GetStateProvinceByAbbreviationAsync(selectedAddress.State, country?.Id);
-                var newShippingAddress = await PrepareCustomerAddressAsync(details.Customer, new()
+                var country = _countryService.GetCountryByTwoLetterIsoCode(selectedAddress.Country);
+                var state = _stateProvinceService.GetStateProvinceByAbbreviation(selectedAddress.State, country?.Id);
+                var newShippingAddress = PrepareCustomerAddress(details.Customer, new NopAddress
                 {
                     Email = email ?? details.Customer.Email,
                     City = selectedAddress.City,
@@ -733,16 +703,16 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 if (newShippingAddress.Id != details.Customer.ShippingAddressId)
                 {
                     details.Customer.ShippingAddressId = newShippingAddress.Id;
-                    await _customerService.UpdateCustomerAsync(details.Customer);
+                    _customerService.UpdateCustomer(details.Customer);
                 }
             }
 
             //change shipping option when customer selects another one
             if (string.IsNullOrEmpty(selectedOption.Id))
             {
-                var shippingOption = await _genericAttributeService
-                    .GetAttributeAsync<NopShippingOption>(details.Customer, NopCustomerDefaults.SelectedShippingOptionAttribute, details.Store.Id);
-                if (shippingOption is not null)
+                var shippingOption = _genericAttributeService
+                    .GetAttribute<NopShippingOption>(details.Customer, NopCustomerDefaults.SelectedShippingOptionAttribute, details.Store.Id);
+                if (shippingOption != null)
                 {
                     var type = shippingOption.IsPickupInStore ? ShippingType.PICKUP.ToString() : ShippingType.SHIPPING.ToString();
                     selectedOption = (shippingOption.Name, type);
@@ -750,8 +720,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             }
 
             //set new parameters to update shipping details
-            details.BillingAddress = await _customerService.GetCustomerBillingAddressAsync(details.Customer);
-            details.ShippingAddress = await _customerService.GetCustomerShippingAddressAsync(details.Customer);
+            details.BillingAddress = _customerService.GetCustomerBillingAddress(details.Customer);
+            details.ShippingAddress = _customerService.GetCustomerShippingAddress(details.Customer);
             details.IsPickup =
                 selectedOption.Type?.ToUpper() == ShippingType.PICKUP.ToString() ||
                 selectedOption.Type?.ToUpper() == ShippingType.PICKUP_IN_STORE.ToString() ||
@@ -759,7 +729,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             if (details.ShippingAddress is null && !details.IsPickup)
                 return null;
 
-            var shipping = await PrepareShippingDetailsAsync(details, selectedOption.Id);
+            var shipping = PrepareShippingDetails(details, selectedOption.Id);
 
             return shipping;
         }
@@ -773,19 +743,19 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         {
             var patches = new List<Patch<object>>
             {
-                new()
+                new Patch<object>
                 {
                     Op = PatchOpType.REPLACE.ToString().ToLower(),
                     Path = "/purchase_units/@reference_id=='default'/amount",
                     Value = purchaseUnit.Amount
                 },
-                new()
+                new Patch<object>
                 {
                     Op = PatchOpType.REPLACE.ToString().ToLower(),
                     Path = "/purchase_units/@reference_id=='default'/items",
                     Value = purchaseUnit.Items
                 },
-                new()
+                new Patch<object>
                 {
                     Op = PatchOpType.REPLACE.ToString().ToLower(),
                     Path = "/purchase_units/@reference_id=='default'/supplementary_data/card",
@@ -793,27 +763,27 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 }
             };
 
-            if (purchaseUnit.Shipping?.Name is not null)
+            if (purchaseUnit.Shipping?.Name != null)
             {
-                patches.Add(new()
+                patches.Add(new Patch<object>
                 {
                     Op = PatchOpType.REPLACE.ToString().ToLower(),
                     Path = "/purchase_units/@reference_id=='default'/shipping/name",
                     Value = purchaseUnit.Shipping.Name
                 });
             }
-            if (purchaseUnit.Shipping?.Address is not null)
+            if (purchaseUnit.Shipping?.Address != null)
             {
-                patches.Add(new()
+                patches.Add(new Patch<object>
                 {
                     Op = PatchOpType.REPLACE.ToString().ToLower(),
                     Path = "/purchase_units/@reference_id=='default'/shipping/address",
                     Value = purchaseUnit.Shipping.Address
                 });
             }
-            if (purchaseUnit.Shipping?.Options is not null)
+            if (purchaseUnit.Shipping?.Options != null)
             {
-                patches.Add(new()
+                patches.Add(new Patch<object>
                 {
                     Op = PatchOpType.REPLACE.ToString().ToLower(),
                     Path = "/purchase_units/@reference_id=='default'/shipping/options",
@@ -822,7 +792,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             }
             if (!string.IsNullOrEmpty(purchaseUnit.Shipping?.Type))
             {
-                patches.Add(new()
+                patches.Add(new Patch<object>
                 {
                     Op = PatchOpType.REPLACE.ToString().ToLower(),
                     Path = "/purchase_units/@reference_id=='default'/shipping/type",
@@ -838,13 +808,10 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// </summary>
         /// <param name="customer">Customer</param>
         /// <param name="newAddress">Address to check</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the customer address
-        /// </returns>
-        private async Task<NopAddress> PrepareCustomerAddressAsync(Customer customer, NopAddress newAddress)
+        /// <returns>The customer address</returns>
+        private NopAddress PrepareCustomerAddress(Customer customer, NopAddress newAddress)
         {
-            var customerAddresses = await _customerService.GetAddressesByCustomerIdAsync(customer.Id);
+            var customerAddresses = _customerService.GetAddressesByCustomerId(customer.Id);
             var query = customerAddresses.AsQueryable();
             if (!string.IsNullOrEmpty(newAddress.Email))
                 query = query.Where(address => string.Equals(address.Email, newAddress.Email));
@@ -866,11 +833,11 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 query = query.Where(address => string.Equals(address.ZipPostalCode, newAddress.ZipPostalCode));
 
             var existingAddress = query.FirstOrDefault();
-            if (existingAddress is not null)
+            if (existingAddress != null)
                 return existingAddress;
 
-            await _addressService.InsertAddressAsync(newAddress);
-            await _customerService.InsertCustomerAddressAsync(customer, newAddress);
+            _addressService.InsertAddress(newAddress);
+            _customerService.InsertCustomerAddress(customer, newAddress);
 
             return newAddress;
         }
@@ -879,16 +846,13 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// Get shipping option name
         /// </summary>
         /// <param name="option">Shipping option</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the shipping option name
-        /// </returns>
-        private async Task<string> GetShippingOptionNameAsync(NopShippingOption option)
+        /// <returns>The shipping option name</returns>
+        private string GetShippingOptionName(NopShippingOption option)
         {
             return option.IsPickupInStore
                 ? (string.IsNullOrEmpty(option.Name)
-                ? await _localizationService.GetResourceAsync("Checkout.PickupPoints.NullName")
-                : string.Format(await _localizationService.GetResourceAsync("Checkout.PickupPoints.Name"), option.Name))
+                ? _localizationService.GetResource("Checkout.PickupPoints.NullName")
+                : string.Format(_localizationService.GetResource("Checkout.PickupPoints.Name"), option.Name))
                 : option.Name;
         }
 
@@ -901,11 +865,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// </summary>
         /// <param name="settings">Plugin settings</param>
         /// <param name="tokens">Payment tokens</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the list of payment tokens
-        /// </returns>
-        private async Task<List<PayPalToken>> PreparePaymentTokensAsync(PayPalCommerceSettings settings, IList<PayPalToken> tokens)
+        /// <returns>The list of payment tokens</returns>
+        private List<PayPalToken> PreparePaymentTokens(PayPalCommerceSettings settings, IList<PayPalToken> tokens)
         {
             var paymentTokens = new List<PaymentToken>();
 
@@ -915,9 +876,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     continue;
 
                 //try to get payment tokens from the vault
-                var response = await _httpClient
-                    .RequestAsync<GetPaymentTokensRequest, GetPaymentTokensResponse>(new() { VaultCustomerId = token.VaultCustomerId }, settings);
-                paymentTokens.AddRange(response?.PaymentTokens ?? new());
+                var response = _httpClient
+                    .Request<GetPaymentTokensRequest, GetPaymentTokensResponse>(new GetPaymentTokensRequest { VaultCustomerId = token.VaultCustomerId }, settings);
+                paymentTokens.AddRange(response?.PaymentTokens ?? new List<PaymentToken>());
             }
             if (paymentTokens?.Any() != true)
                 return new List<PayPalToken>();
@@ -930,17 +891,17 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     return null;
 
                 //set title and expiration date
-                paymentToken.Title = existingToken.PaymentSource?.Card is not null
+                paymentToken.Title = existingToken.PaymentSource?.Card != null
                     ? $"{existingToken.PaymentSource.Card.Brand} *{existingToken.PaymentSource.Card.LastDigits}"
-                    : (existingToken.PaymentSource?.Venmo is not null
+                    : (existingToken.PaymentSource?.Venmo != null
                     ? existingToken.PaymentSource.Venmo.UserName
-                    : (existingToken.PaymentSource?.PayPal is not null
+                    : (existingToken.PaymentSource?.PayPal != null
                     ? existingToken.PaymentSource.PayPal.EmailAddress
                     : "N/A"));
-                paymentToken.Expiration = existingToken.PaymentSource?.Card is not null ? existingToken.PaymentSource.Card.Expiry : "N/A";
+                paymentToken.Expiration = existingToken.PaymentSource?.Card != null ? existingToken.PaymentSource.Card.Expiry : "N/A";
 
                 return paymentToken;
-            }).Where(token => token is not null).ToList();
+            }).Where(token => token != null).ToList();
         }
 
         #endregion
@@ -954,7 +915,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// <returns>SHA256 hash</returns>
         private static string GetSha256Hash(string stringToHash)
         {
-            return SHA256.HashData(Encoding.Default.GetBytes(stringToHash)).Aggregate(string.Empty, (current, next) => $"{current}{next:x2}");
+            return new SHA256Managed().ComputeHash(Encoding.Default.GetBytes(stringToHash))
+                .Aggregate(string.Empty, (current, next) => $"{current}{next:x2}");
         }
 
         #endregion
@@ -1010,18 +972,15 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// Check whether the plugin is configured, connected and active
         /// </summary>
         /// <param name="settings">Plugin settings</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the check result; plugin instance
-        /// </returns>
-        public async Task<(bool Active, IPaymentMethod paymentMethod)> IsActiveAsync(PayPalCommerceSettings settings)
+        /// <returns>The check result; plugin instance</returns>
+        public (bool Active, IPaymentMethod paymentMethod) IsActive(PayPalCommerceSettings settings)
         {
             if (!IsConnected(settings))
                 return (false, null);
 
-            var customer = await _workContext.GetCurrentCustomerAsync();
-            var store = await _storeContext.GetCurrentStoreAsync();
-            var plugin = await _paymentPluginManager.LoadPluginBySystemNameAsync(PayPalCommerceDefaults.SystemName, customer, store.Id);
+            var customer = _workContext.CurrentCustomer;
+            var store = _storeContext.CurrentStore;
+            var plugin = _paymentPluginManager.LoadPluginBySystemName(PayPalCommerceDefaults.SystemName, customer, store.Id);
             if (!_paymentPluginManager.IsPluginActive(plugin))
                 return (false, plugin);
 
@@ -1032,15 +991,12 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// Get access token
         /// </summary>
         /// <param name="settings">Plugin settings</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the access token; error message if exists
-        /// </returns>
-        public async Task<(AccessToken AccessToken, string Error)> GetAccessTokenAsync(PayPalCommerceSettings settings)
+        /// <returns>The access token; error message if exists</returns>
+        public (AccessToken AccessToken, string Error) GetAccessToken(PayPalCommerceSettings settings)
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
-                return await _httpClient.RequestAsync<GetAccessTokenRequest, GetAccessTokenResponse>(new()
+                return _httpClient.Request<GetAccessTokenRequest, GetAccessTokenResponse>(new GetAccessTokenRequest
                 {
                     ClientId = settings.ClientId,
                     Secret = settings.SecretKey,
@@ -1059,31 +1015,28 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// <param name="settings">Plugin settings</param>
         /// <param name="placement">Button placement</param>
         /// <param name="productId">Product id</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the script details, customer details, messages details; error message if exists
-        /// </returns>
-        public async Task<(((string ScriptUrl, string ClientToken, string UserToken),
+        /// <returns>The script details, customer details, messages details; error message if exists</returns>
+        public (((string ScriptUrl, string ClientToken, string UserToken),
             (string Email, string Name),
             (string MessageConfig, string Amount)),
-            string Error)>
-            PreparePaymentDetailsAsync(PayPalCommerceSettings settings, ButtonPlacement placement, int? productId)
+            string Error)
+            PreparePaymentDetails(PayPalCommerceSettings settings, ButtonPlacement placement, int? productId)
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
                 //get the primary store currency
-                var currencyCode = (await _currencyService.GetCurrencyByIdAsync(_currencySettings.PrimaryStoreCurrencyId))?.CurrencyCode;
+                var currencyCode = _currencyService.GetCurrencyById(_currencySettings.PrimaryStoreCurrencyId)?.CurrencyCode;
                 if (string.IsNullOrEmpty(currencyCode))
                     throw new NopException("Primary store currency not set");
 
                 //customer details
-                var customer = await _workContext.GetCurrentCustomerAsync();
-                var isGuest = await _customerService.IsGuestAsync(customer);
-                var address = await _customerService.GetCustomerBillingAddressAsync(customer);
-                var email = address is not null ? address.Email : customer.Email;
-                var fullName = address is not null
+                var customer = _workContext.CurrentCustomer;
+                var isGuest = _customerService.IsGuest(customer);
+                var address = _customerService.GetCustomerBillingAddress(customer);
+                var email = address != null ? address.Email : customer.Email;
+                var fullName = address != null
                     ? $"{address.FirstName} {address.LastName}"
-                    : await _customerService.GetCustomerFullNameAsync(customer);
+                    : _customerService.GetCustomerFullName(customer);
 
                 //prepare script components
                 var components = new List<string>() { "buttons", "funding-eligibility" };
@@ -1120,7 +1073,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 string clientToken = null;
                 if (placement == ButtonPlacement.PaymentMethod && settings.UseCardFields)
                 {
-                    var identityToken = await _httpClient.RequestAsync<CreateIdentityTokenRequest, CreateIdentityTokenResponse>(new()
+                    var identityToken = _httpClient.Request<CreateIdentityTokenRequest, CreateIdentityTokenResponse>(new CreateIdentityTokenRequest
                     {
                         CustomerId = CommonHelper.EnsureMaximumLength(GetSha256Hash(customer.CustomerGuid.ToString()), 22)
                     }, settings);
@@ -1131,13 +1084,13 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 string userToken = null;
                 if (settings.UseVault && !isGuest)
                 {
-                    var tokens = await _tokenService.GetAllTokensAsync(settings.ClientId, customer.Id);
+                    var tokens = _tokenService.GetAllTokens(settings.ClientId, customer.Id);
                     var vaultCustomerId = tokens
                         .OrderBy(token => token.IsPrimaryMethod ? 0 : 1)
                         .ThenBy(token => token.Id)
                         .FirstOrDefault()
                         ?.VaultCustomerId;
-                    var accessToken = await _httpClient.RequestAsync<GetAccessTokenRequest, GetAccessTokenResponse>(new()
+                    var accessToken = _httpClient.Request<GetAccessTokenRequest, GetAccessTokenResponse>(new GetAccessTokenRequest
                     {
                         ClientId = settings.ClientId,
                         Secret = settings.SecretKey,
@@ -1149,7 +1102,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 }
 
                 //Pay Later details
-                var amount = await PrepareMessagesAmountAsync(placement, customer, currencyCode, productId);
+                var amount = PrepareMessagesAmount(placement, customer, currencyCode, productId);
                 var payLaterConfig = new
                 {
                     cart = new MessageConfiguration(),
@@ -1175,21 +1128,18 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// </summary>
         /// <param name="settings">Plugin settings</param>
         /// <param name="placement">Button placement</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the message configuration, amount value, currency code; error message if exists
-        /// </returns>
-        public async Task<((string Config, string Amount, string CurrencyCode), string Error)>
-            PrepareMessagesAsync(PayPalCommerceSettings settings, ButtonPlacement placement)
+        /// <returns>The message configuration, amount value, currency code; error message if exists</returns>
+        public ((string Config, string Amount, string CurrencyCode), string Error)
+            PrepareMessages(PayPalCommerceSettings settings, ButtonPlacement placement)
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
-                var currencyCode = (await _currencyService.GetCurrencyByIdAsync(_currencySettings.PrimaryStoreCurrencyId))?.CurrencyCode;
+                var currencyCode = _currencyService.GetCurrencyById(_currencySettings.PrimaryStoreCurrencyId)?.CurrencyCode;
                 if (string.IsNullOrEmpty(currencyCode))
                     throw new NopException("Primary store currency not set");
 
-                var customer = await _workContext.GetCurrentCustomerAsync();
-                var amount = await PrepareMessagesAmountAsync(placement, customer, currencyCode, null);
+                var customer = _workContext.CurrentCustomer;
+                var amount = PrepareMessagesAmount(placement, customer, currencyCode, null);
 
                 var payLaterConfig = new
                 {
@@ -1218,69 +1168,63 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// <summary>
         /// Check whether the checkout is enabled for the customer
         /// </summary>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the check results; shopping cart
-        /// </returns>
-        public async Task<(bool IsEnabled, bool LoginIsRequired, IList<ShoppingCartItem> Cart)> CheckoutIsEnabledAsync()
+        /// <returns>The check results; shopping cart</returns>
+        public (bool IsEnabled, bool LoginIsRequired, IList<ShoppingCartItem> Cart) CheckoutIsEnabled()
         {
-            return (await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
                 if (_orderSettings.CheckoutDisabled)
                     return (false, false, null);
 
-                var customer = await _workContext.GetCurrentCustomerAsync();
-                var store = await _storeContext.GetCurrentStoreAsync();
-                var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+                var customer = _workContext.CurrentCustomer;
+                var store = _storeContext.CurrentStore;
+                var cart = _shoppingCartService.GetShoppingCart(customer, ShoppingCartType.ShoppingCart, store.Id);
                 if (!cart.Any())
                     return (false, false, null);
 
-                if (await _customerService.IsGuestAsync(customer))
+                if (_customerService.IsGuest(customer))
                 {
                     if (!_orderSettings.AnonymousCheckoutAllowed)
                         return (true, true, cart);
 
                     var downloadableProductsRequireRegistration = _customerSettings.RequireRegistrationForDownloadableProducts &&
-                        await _productService.HasAnyDownloadableProductAsync(cart.Select(item => item.ProductId).ToArray());
+                        _productService.HasAnyDownloadableProduct(cart.Select(item => item.ProductId).ToArray());
                     if (downloadableProductsRequireRegistration)
                         return (true, true, cart);
                 }
 
                 return (true, false, cart);
-            }, false)).Result;
+            }, false).Result;
         }
 
         /// <summary>
         /// Check whether the shopping cart is valid
         /// </summary>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the validation warnings; error message if exists
-        /// </returns>
-        public async Task<(IList<string> Warnings, string Error)> ValidateShoppingCartAsync()
+        /// <returns>The validation warnings; error message if exists</returns>
+        public (IList<string> Warnings, string Error) ValidateShoppingCart()
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
-                var customer = await _workContext.GetCurrentCustomerAsync();
-                var store = await _storeContext.GetCurrentStoreAsync();
-                var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+                var customer = _workContext.CurrentCustomer;
+                var store = _storeContext.CurrentStore;
+                var cart = _shoppingCartService.GetShoppingCart(customer, ShoppingCartType.ShoppingCart, store.Id);
                 if (!cart.Any())
                     throw new NopException("Shopping cart is empty");
 
-                await _customerService.ResetCheckoutDataAsync(customer, store.Id, clearShippingMethod: false);
+                _customerService.ResetCheckoutData(customer, store.Id, clearShippingMethod: false);
 
-                var checkoutAttributesXml = await _genericAttributeService
-                    .GetAttributeAsync<string>(customer, NopCustomerDefaults.CheckoutAttributes, store.Id);
-                var cartWarnings = await _shoppingCartService.GetShoppingCartWarningsAsync(cart, checkoutAttributesXml, true);
+                var checkoutAttributesXml = _genericAttributeService
+                    .GetAttribute<string>(customer, NopCustomerDefaults.CheckoutAttributes, store.Id);
+                var cartWarnings = _shoppingCartService.GetShoppingCartWarnings(cart, checkoutAttributesXml, true);
                 if (cartWarnings.Any())
                     return cartWarnings;
 
                 foreach (var item in cart)
                 {
-                    var product = await _productService.GetProductByIdAsync(item.ProductId);
+                    var product = _productService.GetProductById(item.ProductId);
 
-                    var itemWarnings = await _shoppingCartService
-                        .GetShoppingCartItemWarningsAsync(customer, item.ShoppingCartType, product, item.StoreId, item.AttributesXml,
+                    var itemWarnings = _shoppingCartService
+                        .GetShoppingCartItemWarnings(customer, item.ShoppingCartType, product, item.StoreId, item.AttributesXml,
                         item.CustomerEnteredPrice, item.RentalStartDateUtc, item.RentalEndDateUtc, item.Quantity, false, item.Id);
                     if (itemWarnings.Any())
                         return itemWarnings;
@@ -1294,20 +1238,17 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// Check whether the shipping is required for the current cart/product
         /// </summary>
         /// <param name="productId">Product id</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the check result; error message if exists
-        /// </returns>
-        public async Task<(bool ShippingIsRequired, string Error)> CheckShippingIsRequiredAsync(int? productId)
+        /// <returns>The check result; error message if exists</returns>
+        public (bool ShippingIsRequired, string Error) CheckShippingIsRequired(int? productId)
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
-                var customer = await _workContext.GetCurrentCustomerAsync();
-                var store = await _storeContext.GetCurrentStoreAsync();
-                var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
-                var shippingIsRequired = await _shoppingCartService.ShoppingCartRequiresShippingAsync(cart);
+                var customer = _workContext.CurrentCustomer;
+                var store = _storeContext.CurrentStore;
+                var cart = _shoppingCartService.GetShoppingCart(customer, ShoppingCartType.ShoppingCart, store.Id);
+                var shippingIsRequired = _shoppingCartService.ShoppingCartRequiresShipping(cart);
 
-                if (!shippingIsRequired && await _productService.GetProductByIdAsync(productId ?? 0) is Product product)
+                if (!shippingIsRequired && _productService.GetProductById(productId ?? 0) is Product product)
                     shippingIsRequired = product.IsShipEnabled;
 
                 return shippingIsRequired;
@@ -1323,13 +1264,10 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// </summary>
         /// <param name="settings">Plugin settings</param>
         /// <param name="orderId">Order id</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the order; error message if exists
-        /// </returns>
-        public async Task<(Order Order, string Error)> GetOrderAsync(PayPalCommerceSettings settings, string orderId)
+        /// <returns>The order; error message if exists</returns>
+        public (Order Order, string Error) GetOrder(PayPalCommerceSettings settings, string orderId)
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
                 if (!IsConfigured(settings))
                     throw new NopException("Plugin not configured");
@@ -1338,21 +1276,21 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     .Get<ProcessPaymentRequest>(PayPalCommerceDefaults.PaymentRequestSessionKey)
                     ?? throw new NopException("Order payment info not found");
 
-                var orderIdKey = await _localizationService.GetResourceAsync("Plugins.Payments.PayPalCommerce.Order.Id");
+                var orderIdKey = _localizationService.GetResource("Plugins.Payments.PayPalCommerce.Order.Id");
                 if (!paymentRequest.CustomValues.TryGetValue(orderIdKey, out var orderIdValue) ||
                     !string.Equals(orderIdValue.ToString(), orderId, StringComparison.InvariantCultureIgnoreCase))
                 {
                     throw new NopException("Failed to get PayPal order info");
                 }
 
-                var placementKey = await _localizationService.GetResourceAsync("Plugins.Payments.PayPalCommerce.Order.Placement");
+                var placementKey = _localizationService.GetResource("Plugins.Payments.PayPalCommerce.Order.Placement");
                 if (!paymentRequest.CustomValues.TryGetValue(placementKey, out var placementValue) ||
                     !Enum.TryParse<ButtonPlacement>(placementValue.ToString(), out var placement))
                 {
                     throw new NopException("Failed to get PayPal order info");
                 }
 
-                var order = await _httpClient.RequestAsync<GetOrderRequest, GetOrderResponse>(new GetOrderRequest { OrderId = orderId }, settings);
+                var order = _httpClient.Request<GetOrderRequest, GetOrderResponse>(new GetOrderRequest { OrderId = orderId }, settings);
 
                 return order;
             });
@@ -1366,23 +1304,20 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// <param name="placement">Button placement</param>
         /// <param name="shippingIsRequired">Whether the shipping is required (used for validation)</param>
         /// <param name="paymentSource">Payment source</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the created order; error message if exists
-        /// </returns>
-        public async Task<(Order Order, string Error)> GetCreatedOrderAsync(PayPalCommerceSettings settings,
+        /// <returns>The created order; error message if exists</returns>
+        public (Order Order, string Error) GetCreatedOrder(PayPalCommerceSettings settings,
             ProcessPaymentRequest paymentRequest, ButtonPlacement placement, bool shippingIsRequired, string paymentSource)
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
                 if (paymentRequest is null)
                     return null;
 
-                var orderIdKey = await _localizationService.GetResourceAsync("Plugins.Payments.PayPalCommerce.Order.Id");
+                var orderIdKey = _localizationService.GetResource("Plugins.Payments.PayPalCommerce.Order.Id");
                 if (!paymentRequest.CustomValues.TryGetValue(orderIdKey, out var orderIdValue) || string.IsNullOrEmpty(orderIdValue.ToString()))
                     return null;
 
-                var placementKey = await _localizationService.GetResourceAsync("Plugins.Payments.PayPalCommerce.Order.Placement");
+                var placementKey = _localizationService.GetResource("Plugins.Payments.PayPalCommerce.Order.Placement");
                 if (!paymentRequest.CustomValues.TryGetValue(placementKey, out var placementValue) ||
                     !Enum.TryParse<ButtonPlacement>(placementValue.ToString(), out var previousPlacement) ||
                     previousPlacement != placement)
@@ -1390,8 +1325,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     return null;
                 }
 
-                var order = await _httpClient
-                    .RequestAsync<GetOrderRequest, GetOrderResponse>(new GetOrderRequest { OrderId = orderIdValue.ToString() }, settings);
+                var order = _httpClient
+                    .Request<GetOrderRequest, GetOrderResponse>(new GetOrderRequest { OrderId = orderIdValue.ToString() }, settings);
 
                 //we cannot use completed order
                 if (order.Status?.ToUpper() != OrderStatusType.CREATED.ToString() &&
@@ -1408,7 +1343,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     return null;
                 }
 
-                if (order.PurchaseUnits.FirstOrDefault() is not PurchaseUnit unit || (unit.Shipping is null != !shippingIsRequired))
+                var unit = order.PurchaseUnits.FirstOrDefault();
+                if (unit is null || (unit.Shipping is null != !shippingIsRequired))
                     return null;
 
                 //payment sources must match
@@ -1436,14 +1372,11 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// <param name="paymentSource">Payment source</param>
         /// <param name="cardId">Saved card id</param>
         /// <param name="saveCard">Whether to save card payment token</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the created order; error message if exists
-        /// </returns>
-        public async Task<(Order Order, string Error)> CreateOrderAsync(PayPalCommerceSettings settings,
+        /// <returns>The created order; error message if exists</returns>
+        public (Order Order, string Error) CreateOrder(PayPalCommerceSettings settings,
             ButtonPlacement placement, string paymentSource, int? cardId, bool saveCard)
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
                 if (!IsConfigured(settings))
                     throw new NopException("Plugin not configured");
@@ -1452,50 +1385,50 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     throw new NopException("Merchant PayPal ID not set");
 
                 //get the primary store currency
-                var currencyCode = (await _currencyService.GetCurrencyByIdAsync(_currencySettings.PrimaryStoreCurrencyId))?.CurrencyCode;
+                var currencyCode = _currencyService.GetCurrencyById(_currencySettings.PrimaryStoreCurrencyId)?.CurrencyCode;
                 if (string.IsNullOrEmpty(currencyCode))
                     throw new NopException("Primary store currency not set");
 
-                var customer = await _workContext.GetCurrentCustomerAsync();
-                var store = await _storeContext.GetCurrentStoreAsync();
-                var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+                var customer = _workContext.CurrentCustomer;
+                var store = _storeContext.CurrentStore;
+                var cart = _shoppingCartService.GetShoppingCart(customer, ShoppingCartType.ShoppingCart, store.Id);
                 if (!cart.Any())
                     throw new NopException("Shopping cart is empty");
 
-                var billingAddress = await _addressService.GetAddressByIdAsync(customer.BillingAddressId ?? 0);
+                var billingAddress = _addressService.GetAddressById(customer.BillingAddressId ?? 0);
                 if (placement == ButtonPlacement.PaymentMethod && billingAddress is null)
                     throw new NopException("Customer billing address not set");
 
-                var shippingIsRequired = await _shoppingCartService.ShoppingCartRequiresShippingAsync(cart);
-                var shippingOption = await _genericAttributeService
-                    .GetAttributeAsync<NopShippingOption>(customer, NopCustomerDefaults.SelectedShippingOptionAttribute, store.Id);
-                var pickupPoint = await _genericAttributeService
-                    .GetAttributeAsync<PickupPoint>(customer, NopCustomerDefaults.SelectedPickupPointAttribute, store.Id);
-                var pickupInStore = _shippingSettings.AllowPickupInStore && pickupPoint is not null;
+                var shippingIsRequired = _shoppingCartService.ShoppingCartRequiresShipping(cart);
+                var shippingOption = _genericAttributeService
+                    .GetAttribute<NopShippingOption>(customer, NopCustomerDefaults.SelectedShippingOptionAttribute, store.Id);
+                var pickupPoint = _genericAttributeService
+                    .GetAttribute<PickupPoint>(customer, NopCustomerDefaults.SelectedPickupPointAttribute, store.Id);
+                var pickupInStore = _shippingSettings.AllowPickupInStore && pickupPoint != null;
                 var shippingAddress = pickupInStore ? new NopAddress
                 {
                     Address1 = pickupPoint.Address,
                     City = pickupPoint.City,
                     County = pickupPoint.County,
-                    CountryId = (await _countryService.GetCountryByTwoLetterIsoCodeAsync(pickupPoint.CountryCode))?.Id,
-                    StateProvinceId = (await _stateProvinceService.GetStateProvinceByAbbreviationAsync(pickupPoint.StateAbbreviation,
-                        (await _countryService.GetCountryByTwoLetterIsoCodeAsync(pickupPoint.CountryCode))?.Id))?.Id,
+                    CountryId = _countryService.GetCountryByTwoLetterIsoCode(pickupPoint.CountryCode)?.Id,
+                    StateProvinceId = _stateProvinceService.GetStateProvinceByAbbreviation(pickupPoint.StateAbbreviation,
+                        _countryService.GetCountryByTwoLetterIsoCode(pickupPoint.CountryCode)?.Id)?.Id,
                     ZipPostalCode = pickupPoint.ZipPostalCode,
                     CreatedOnUtc = DateTime.UtcNow
-                } : await _addressService.GetAddressByIdAsync(customer.ShippingAddressId ?? 0);
+                } : _addressService.GetAddressById(customer.ShippingAddressId ?? 0);
                 if (placement == ButtonPlacement.PaymentMethod && shippingIsRequired && shippingAddress is null)
                     throw new NopException("Customer shipping address not set");
 
-                var savedPaymentToken = await _tokenService.GetByIdAsync(cardId ?? 0);
-                if (savedPaymentToken is not null && savedPaymentToken.CustomerId != customer.Id)
+                var savedPaymentToken = _tokenService.GetById(cardId ?? 0);
+                if (savedPaymentToken != null && savedPaymentToken.CustomerId != customer.Id)
                     throw new NopException("Card details not found");
 
                 var paymentRequest = _actionContextAccessor.ActionContext.HttpContext.Session
                     .Get<ProcessPaymentRequest>(PayPalCommerceDefaults.PaymentRequestSessionKey);
-                var (order, _) = await GetCreatedOrderAsync(settings, paymentRequest, placement, shippingIsRequired, paymentSource);
+                var (order, _) = GetCreatedOrder(settings, paymentRequest, placement, shippingIsRequired, paymentSource);
                 if (paymentRequest is null || order is null)
                 {
-                    paymentRequest = new();
+                    paymentRequest = new ProcessPaymentRequest();
                     _paymentService.GenerateOrderGuid(paymentRequest);
                 }
                 var orderGuid = paymentRequest.OrderGuid.ToString();
@@ -1516,19 +1449,19 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 };
 
                 //prepare purchase unit
-                var shipping = await PrepareShippingDetailsAsync(details, shippingOption?.Name);
-                var items = await PrepareOrderItemsAsync(details);
-                var orderAmount = await PrepareOrderMoneyAsync(details, items);
+                var shipping = PrepareShippingDetails(details, shippingOption?.Name);
+                var items = PrepareOrderItems(details);
+                var orderAmount = PrepareOrderMoney(details, items);
                 var cardData = new CardData
                 {
-                    Level2 = new() { InvoiceId = CommonHelper.EnsureMaximumLength(orderGuid, 127) },
-                    Level3 = new()
+                    Level2 = new CardDataLevel2 { InvoiceId = CommonHelper.EnsureMaximumLength(orderGuid, 127) },
+                    Level3 = new CardDataLevel3
                     {
                         LineItems = items,
                         ShippingAmount = orderAmount.Breakdown.Shipping,
                         ShippingAddress = shipping?.Address,
-                        ShipsFromPostalCode = CommonHelper.EnsureMaximumLength((await _addressService
-                            .GetAddressByIdAsync(_shippingSettings.ShippingOriginAddressId))?.ZipPostalCode, 60)
+                        ShipsFromPostalCode = CommonHelper.EnsureMaximumLength((_addressService
+                            .GetAddressById(_shippingSettings.ShippingOriginAddressId))?.ZipPostalCode, 60)
                     },
                 };
                 var purchaseUnit = new PurchaseUnit
@@ -1537,11 +1470,11 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     InvoiceId = CommonHelper.EnsureMaximumLength(orderGuid, 127),
                     Description = CommonHelper.EnsureMaximumLength($"Purchase at '{store.Name}'", 127),
                     SoftDescriptor = CommonHelper.EnsureMaximumLength(store.Name, 22),
-                    Payee = new() { MerchantId = settings.MerchantId },
+                    Payee = new Payee { MerchantId = settings.MerchantId },
                     Items = items,
                     Amount = orderAmount,
                     Shipping = shipping,
-                    SupplementaryData = new() { Card = cardData }
+                    SupplementaryData = new SupplementaryData { Card = cardData }
                 };
 
                 //whether we should create a new order
@@ -1552,10 +1485,10 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     var isApplepay = string.Equals(paymentSource, nameof(PaymentSource.ApplePay), StringComparison.InvariantCultureIgnoreCase);
 
                     var context = PrepareOrderContext(settings, details, orderGuid, isApplepay);
-                    var payer = await PrepareBillingDetailsAsync(details);
+                    var payer = PrepareBillingDetails(details);
 
                     //only registered customers can save payment tokens
-                    var isGuest = await _customerService.IsGuestAsync(customer);
+                    var isGuest = _customerService.IsGuest(customer);
                     var vault = !settings.UseVault || isGuest ? null : new VaultInstruction
                     {
                         UsageType = VaultUsageType.MERCHANT.ToString().ToUpper(),
@@ -1563,9 +1496,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                         StoreInVault = VaultInstructionType.ON_SUCCESS.ToString().ToUpper(),
                         PermitMultiplePaymentTokens = false
                     };
-                    if (vault is not null)
+                    if (vault != null)
                     {
-                        payer.Id = (await _tokenService.GetAllTokensAsync(settings.ClientId, customer.Id))
+                        payer.Id = (_tokenService.GetAllTokens(settings.ClientId, customer.Id))
                             .OrderBy(token => token.IsPrimaryMethod ? 0 : 1)
                             .ThenBy(token => token.Type == nameof(PaymentSource.Card) ? 0 : 1)
                             .ThenBy(token => token.Id)
@@ -1577,21 +1510,21 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     var paymentSourceDetails = new PaymentSource();
                     if (isCard)
                     {
-                        paymentSourceDetails.Card = new()
+                        paymentSourceDetails.Card = new Card
                         {
                             ExperienceContext = context,
                             BillingAddress = !string.IsNullOrEmpty(savedPaymentToken?.VaultId) ? null : payer.Address,
                             VaultId = savedPaymentToken?.VaultId,
-                            Attributes = vault is null || !saveCard || !string.IsNullOrEmpty(savedPaymentToken?.VaultId) ? null : new()
+                            Attributes = vault is null || !saveCard || !string.IsNullOrEmpty(savedPaymentToken?.VaultId) ? null : new Attributes
                             {
                                 Vault = vault,
                                 Customer = payer
                             }
                         };
 
-                        if (vault is not null && (saveCard || !string.IsNullOrEmpty(savedPaymentToken?.VaultId)))
+                        if (vault != null && (saveCard || !string.IsNullOrEmpty(savedPaymentToken?.VaultId)))
                         {
-                            paymentSourceDetails.Card.StoredCredential = new()
+                            paymentSourceDetails.Card.StoredCredential = new StoredCredential
                             {
                                 PaymentInitiator = PaymentInitiatorType.CUSTOMER.ToString().ToUpper(),
                                 PaymentType = Api.Models.Enums.PaymentType.ONE_TIME.ToString().ToUpper(),
@@ -1603,11 +1536,11 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
 
                         if (placement == ButtonPlacement.PaymentMethod && settings.UseCardFields)
                         {
-                            paymentSourceDetails.Card.Attributes = new()
+                            paymentSourceDetails.Card.Attributes = new Attributes
                             {
-                                Vault = vault is not null && saveCard && string.IsNullOrEmpty(savedPaymentToken?.VaultId) ? vault : null,
-                                Customer = vault is not null && saveCard && string.IsNullOrEmpty(savedPaymentToken?.VaultId) ? payer : null,
-                                Verification = new()
+                                Vault = vault != null && saveCard && string.IsNullOrEmpty(savedPaymentToken?.VaultId) ? vault : null,
+                                Customer = vault != null && saveCard && string.IsNullOrEmpty(savedPaymentToken?.VaultId) ? payer : null,
+                                Verification = new VerificationInstruction
                                 {
                                     Method = settings.CustomerAuthenticationRequired
                                         ? VerificationInstructionMethodType.SCA_ALWAYS.ToString().ToUpper()
@@ -1618,51 +1551,51 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     }
                     else if (isVenmo)
                     {
-                        paymentSourceDetails.Venmo = new()
+                        paymentSourceDetails.Venmo = new Venmo
                         {
                             ExperienceContext = context,
                             EmailAddress = payer.EmailAddress,
-                            Attributes = vault is not null ? new() { Vault = vault, Customer = payer } : null
+                            Attributes = vault != null ? new Attributes { Vault = vault, Customer = payer } : null
                         };
                     }
                     else
                     {
-                        paymentSourceDetails.PayPal = new()
+                        paymentSourceDetails.PayPal = new PayPal
                         {
                             ExperienceContext = context,
                             EmailAddress = payer.EmailAddress,
                             Name = payer.Name,
                             BirthDate = payer.BirthDate,
                             Address = payer.Address,
-                            Attributes = vault is not null ? new() { Vault = vault, Customer = payer } : null
+                            Attributes = vault != null ? new Attributes { Vault = vault, Customer = payer } : null
                         };
                     }
 
-                    order = await _httpClient.RequestAsync<CreateOrderRequest, CreateOrderResponse>(new CreateOrderRequest
+                    order = _httpClient.Request<CreateOrderRequest, CreateOrderResponse>(new CreateOrderRequest
                     {
                         Intent = settings.PaymentType.ToString().ToUpper(),
                         PaymentSource = paymentSourceDetails,
-                        PurchaseUnits = new() { purchaseUnit }
+                        PurchaseUnits = new List<PurchaseUnit> { purchaseUnit }
                     }, settings);
                 }
                 else
                 {
                     //order exists, so just update some details
                     var patches = PreparePatches(purchaseUnit);
-                    patches.Add(new()
+                    patches.Add(new Patch<object>
                     {
                         Op = PatchOpType.REPLACE.ToString().ToLower(),
                         Path = "/intent",
                         Value = settings.PaymentType.ToString().ToUpper()
                     });
                     var updateRequest = new UpdateOrderRequest<object>(patches) { OrderId = order.Id };
-                    await _httpClient.RequestAsync<UpdateOrderRequest<object>, EmptyResponse>(updateRequest, settings);
+                    _httpClient.Request<UpdateOrderRequest<object>, EmptyResponse>(updateRequest, settings);
                 }
 
                 //save order details for future using as the payment request
-                var orderIdKey = await _localizationService.GetResourceAsync("Plugins.Payments.PayPalCommerce.Order.Id");
+                var orderIdKey = _localizationService.GetResource("Plugins.Payments.PayPalCommerce.Order.Id");
                 paymentRequest.CustomValues[orderIdKey] = order.Id;
-                var placementKey = await _localizationService.GetResourceAsync("Plugins.Payments.PayPalCommerce.Order.Placement");
+                var placementKey = _localizationService.GetResource("Plugins.Payments.PayPalCommerce.Order.Placement");
                 paymentRequest.CustomValues[placementKey] = placement.ToString();
                 _actionContextAccessor.ActionContext.HttpContext.Session.Set(PayPalCommerceDefaults.PaymentRequestSessionKey, paymentRequest);
 
@@ -1677,26 +1610,23 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// <param name="orderId">Order id</param>
         /// <param name="selectedAddress">Selected shipping address</param>
         /// <param name="selectedOption">Selected shipping option</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the result of update; error message if exists
-        /// </returns>
-        public async Task<(bool Result, string Error)> UpdateOrderShippingAsync(PayPalCommerceSettings settings, string orderId,
+        /// <returns>The result of update; error message if exists</returns>
+        public (bool Result, string Error) UpdateOrderShipping(PayPalCommerceSettings settings, string orderId,
             (string City, string State, string Country, string PostalCode) selectedAddress,
             (string Id, string Type) selectedOption)
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
                 if (!IsConfigured(settings))
                     throw new NopException("Plugin not configured");
 
-                var currencyCode = (await _currencyService.GetCurrencyByIdAsync(_currencySettings.PrimaryStoreCurrencyId))?.CurrencyCode;
+                var currencyCode = _currencyService.GetCurrencyById(_currencySettings.PrimaryStoreCurrencyId)?.CurrencyCode;
                 if (string.IsNullOrEmpty(currencyCode))
                     throw new NopException("Primary store currency not set");
 
-                var customer = await _workContext.GetCurrentCustomerAsync();
-                var store = await _storeContext.GetCurrentStoreAsync();
-                var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+                var customer = _workContext.CurrentCustomer;
+                var store = _storeContext.CurrentStore;
+                var cart = _shoppingCartService.GetShoppingCart(customer, ShoppingCartType.ShoppingCart, store.Id);
                 if (!cart.Any())
                     throw new NopException("Shopping cart is empty");
 
@@ -1704,14 +1634,14 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     .Get<ProcessPaymentRequest>(PayPalCommerceDefaults.PaymentRequestSessionKey)
                     ?? throw new NopException("Order payment info not found");
 
-                var orderIdKey = await _localizationService.GetResourceAsync("Plugins.Payments.PayPalCommerce.Order.Id");
+                var orderIdKey = _localizationService.GetResource("Plugins.Payments.PayPalCommerce.Order.Id");
                 if (!paymentRequest.CustomValues.TryGetValue(orderIdKey, out var orderIdValue) ||
                     (!string.IsNullOrEmpty(orderId) && !string.Equals(orderIdValue.ToString(), orderId, StringComparison.InvariantCultureIgnoreCase)))
                 {
                     throw new NopException("Failed to get PayPal order info");
                 }
 
-                var placementKey = await _localizationService.GetResourceAsync("Plugins.Payments.PayPalCommerce.Order.Placement");
+                var placementKey = _localizationService.GetResource("Plugins.Payments.PayPalCommerce.Order.Placement");
                 if (!paymentRequest.CustomValues.TryGetValue(placementKey, out var placementValue) ||
                     !Enum.TryParse<ButtonPlacement>(placementValue.ToString(), out var placement))
                 {
@@ -1723,8 +1653,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     return false;
 
                 //check the order status
-                var order = await _httpClient
-                    .RequestAsync<GetOrderRequest, GetOrderResponse>(new GetOrderRequest { OrderId = orderIdValue.ToString() }, settings);
+                var order = _httpClient
+                    .Request<GetOrderRequest, GetOrderResponse>(new GetOrderRequest { OrderId = orderIdValue.ToString() }, settings);
                 if (order.Status?.ToUpper() != OrderStatusType.CREATED.ToString() &&
                     order.Status?.ToUpper() != OrderStatusType.PAYER_ACTION_REQUIRED.ToString() &&
                     order.Status?.ToUpper() != OrderStatusType.APPROVED.ToString())
@@ -1732,13 +1662,11 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     throw new NopException($"Order is in '{order.Status}' status");
                 }
 
-                if (order.PurchaseUnits.FirstOrDefault() is not PurchaseUnit unit ||
-                    !string.Equals(unit.CustomId, paymentRequest.OrderGuid.ToString(), StringComparison.InvariantCultureIgnoreCase))
-                {
+                var unit = order.PurchaseUnits.FirstOrDefault();
+                if (unit is null || !string.Equals(unit.CustomId, paymentRequest.OrderGuid.ToString(), StringComparison.InvariantCultureIgnoreCase))
                     throw new NopException("Failed to get PayPal order info");
-                }
 
-                var shippingIsRequired = await _shoppingCartService.ShoppingCartRequiresShippingAsync(cart);
+                var shippingIsRequired = _shoppingCartService.ShoppingCartRequiresShipping(cart);
                 if (!shippingIsRequired)
                     return false;
 
@@ -1752,35 +1680,35 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     CurrencyCode = currencyCode,
                     ShippingIsRequired = shippingIsRequired
                 };
-                var shipping = await PrepareUpdatedShippingAsync(details, order.Payer?.EmailAddress, selectedAddress, selectedOption);
+                var shipping = PrepareUpdatedShipping(details, order.Payer?.EmailAddress, selectedAddress, selectedOption);
                 if (shipping is null)
                     return false;
 
                 //recalculate the total and update the items, since the shipping price may have changed
-                var items = await PrepareOrderItemsAsync(details);
-                var orderAmount = await PrepareOrderMoneyAsync(details, items);
+                var items = PrepareOrderItems(details);
+                var orderAmount = PrepareOrderMoney(details, items);
                 var cardData = new CardData
                 {
-                    Level2 = new() { InvoiceId = CommonHelper.EnsureMaximumLength(paymentRequest.OrderGuid.ToString(), 127) },
-                    Level3 = new()
+                    Level2 = new CardDataLevel2 { InvoiceId = CommonHelper.EnsureMaximumLength(paymentRequest.OrderGuid.ToString(), 127) },
+                    Level3 = new CardDataLevel3
                     {
                         LineItems = items,
                         ShippingAmount = orderAmount.Breakdown.Shipping,
                         ShippingAddress = shipping?.Address,
-                        ShipsFromPostalCode = CommonHelper.EnsureMaximumLength((await _addressService
-                            .GetAddressByIdAsync(_shippingSettings.ShippingOriginAddressId))?.ZipPostalCode, 60)
+                        ShipsFromPostalCode = CommonHelper.EnsureMaximumLength((_addressService
+                            .GetAddressById(_shippingSettings.ShippingOriginAddressId))?.ZipPostalCode, 60)
                     },
                 };
 
-                var patches = PreparePatches(new()
+                var patches = PreparePatches(new PurchaseUnit
                 {
                     Shipping = shipping,
                     Items = items,
                     Amount = orderAmount,
-                    SupplementaryData = new() { Card = cardData }
+                    SupplementaryData = new SupplementaryData { Card = cardData }
                 });
                 var updateRequest = new UpdateOrderRequest<object>(patches) { OrderId = order.Id };
-                await _httpClient.RequestAsync<UpdateOrderRequest<object>, EmptyResponse>(updateRequest, settings);
+                _httpClient.Request<UpdateOrderRequest<object>, EmptyResponse>(updateRequest, settings);
 
                 return true;
             });
@@ -1793,25 +1721,22 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// <param name="orderId">Order id</param>
         /// <param name="orderGuid">Internal order id</param>
         /// <param name="liabilityShift">Liability shift</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the order; whether to process the payment immediately; error message if exists
-        /// </returns>
-        public async Task<((Order Order, bool PayNow), string Error)>
-            OrderIsApprovedAsync(PayPalCommerceSettings settings, string orderId, string orderGuid, string liabilityShift)
+        /// <returns>The order; whether to process the payment immediately; error message if exists</returns>
+        public ((Order Order, bool PayNow), string Error)
+            OrderIsApproved(PayPalCommerceSettings settings, string orderId, string orderGuid, string liabilityShift)
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
                 if (!IsConfigured(settings))
                     throw new NopException("Plugin not configured");
 
-                var currencyCode = (await _currencyService.GetCurrencyByIdAsync(_currencySettings.PrimaryStoreCurrencyId))?.CurrencyCode;
+                var currencyCode = _currencyService.GetCurrencyById(_currencySettings.PrimaryStoreCurrencyId)?.CurrencyCode;
                 if (string.IsNullOrEmpty(currencyCode))
                     throw new NopException("Primary store currency not set");
 
-                var customer = await _workContext.GetCurrentCustomerAsync();
-                var store = await _storeContext.GetCurrentStoreAsync();
-                var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+                var customer = _workContext.CurrentCustomer;
+                var store = _storeContext.CurrentStore;
+                var cart = _shoppingCartService.GetShoppingCart(customer, ShoppingCartType.ShoppingCart, store.Id);
                 if (!cart.Any())
                     throw new NopException("Shopping cart is empty");
 
@@ -1825,14 +1750,14 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     throw new NopException("Failed to get PayPal order info");
                 }
 
-                var orderIdKey = await _localizationService.GetResourceAsync("Plugins.Payments.PayPalCommerce.Order.Id");
+                var orderIdKey = _localizationService.GetResource("Plugins.Payments.PayPalCommerce.Order.Id");
                 if (!paymentRequest.CustomValues.TryGetValue(orderIdKey, out var orderIdValue) ||
                     (!string.IsNullOrEmpty(orderId) && !string.Equals(orderIdValue.ToString(), orderId, StringComparison.InvariantCultureIgnoreCase)))
                 {
                     throw new NopException("Failed to get PayPal order info");
                 }
 
-                var placementKey = await _localizationService.GetResourceAsync("Plugins.Payments.PayPalCommerce.Order.Placement");
+                var placementKey = _localizationService.GetResource("Plugins.Payments.PayPalCommerce.Order.Placement");
                 if (!paymentRequest.CustomValues.TryGetValue(placementKey, out var placementValue) ||
                     !Enum.TryParse<ButtonPlacement>(placementValue.ToString(), out var placement))
                 {
@@ -1840,8 +1765,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 }
 
                 //check the order status
-                var order = await _httpClient
-                    .RequestAsync<GetOrderRequest, GetOrderResponse>(new GetOrderRequest { OrderId = orderIdValue.ToString() }, settings);
+                var order = _httpClient
+                    .Request<GetOrderRequest, GetOrderResponse>(new GetOrderRequest { OrderId = orderIdValue.ToString() }, settings);
                 if (order.Status?.ToUpper() != OrderStatusType.APPROVED.ToString() && order.Status?.ToUpper() != OrderStatusType.COMPLETED.ToString())
                 {
                     if (order.Status?.ToUpper() == OrderStatusType.CREATED.ToString())
@@ -1856,22 +1781,20 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                         throw new NopException($"Order is in '{order.Status}' status");
                 }
 
-                if (order.PurchaseUnits.FirstOrDefault() is not PurchaseUnit unit ||
-                    !string.Equals(unit.CustomId, paymentRequest.OrderGuid.ToString(), StringComparison.InvariantCultureIgnoreCase))
-                {
+                var unit = order.PurchaseUnits.FirstOrDefault();
+                if (unit is null || !string.Equals(unit.CustomId, paymentRequest.OrderGuid.ToString(), StringComparison.InvariantCultureIgnoreCase))
                     throw new NopException("Failed to get PayPal order info");
-                }
 
-                await _genericAttributeService
-                    .SaveAttributeAsync(customer, NopCustomerDefaults.SelectedPaymentMethodAttribute, PayPalCommerceDefaults.SystemName, store.Id);
+                _genericAttributeService
+                    .SaveAttribute(customer, NopCustomerDefaults.SelectedPaymentMethodAttribute, PayPalCommerceDefaults.SystemName, store.Id);
 
                 //place order immediately, once order is completed
                 if (order.Status.ToUpper() == OrderStatusType.COMPLETED.ToString())
                     return (order, true);
 
-                var pickupPoint = await _genericAttributeService
-                    .GetAttributeAsync<PickupPoint>(customer, NopCustomerDefaults.SelectedPickupPointAttribute, store.Id);
-                var pickupInStore = _shippingSettings.AllowPickupInStore && pickupPoint is not null;
+                var pickupPoint = _genericAttributeService
+                    .GetAttribute<PickupPoint>(customer, NopCustomerDefaults.SelectedPickupPointAttribute, store.Id);
+                var pickupInStore = _shippingSettings.AllowPickupInStore && pickupPoint != null;
                 var details = new CartDetails
                 {
                     Placement = placement,
@@ -1884,47 +1807,47 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 };
 
                 //recalculate the total and update the items, since the amounts may have changed
-                var items = await PrepareOrderItemsAsync(details);
-                var orderAmount = await PrepareOrderMoneyAsync(details, items);
+                var items = PrepareOrderItems(details);
+                var orderAmount = PrepareOrderMoney(details, items);
                 var cardData = new CardData
                 {
-                    Level2 = new() { InvoiceId = CommonHelper.EnsureMaximumLength(paymentRequest.OrderGuid.ToString(), 127) },
-                    Level3 = new()
+                    Level2 = new CardDataLevel2 { InvoiceId = CommonHelper.EnsureMaximumLength(paymentRequest.OrderGuid.ToString(), 127) },
+                    Level3 = new CardDataLevel3
                     {
                         LineItems = items,
                         ShippingAmount = orderAmount.Breakdown.Shipping,
                         ShippingAddress = unit.Shipping?.Address,
-                        ShipsFromPostalCode = CommonHelper.EnsureMaximumLength((await _addressService
-                            .GetAddressByIdAsync(_shippingSettings.ShippingOriginAddressId))?.ZipPostalCode, 60)
+                        ShipsFromPostalCode = CommonHelper.EnsureMaximumLength((_addressService
+                            .GetAddressById(_shippingSettings.ShippingOriginAddressId))?.ZipPostalCode, 60)
                     },
                 };
 
-                var patches = PreparePatches(new()
+                var patches = PreparePatches(new PurchaseUnit
                 {
                     //if the shipping option type is set to PICKUP, then the full name should start with S2S meaning ship to store (for example, S2S My Store)
-                    Shipping = details.IsPickup && details.PickupPoint is not null
-                        ? new Shipping { Name = new() { FullName = $"S2S {details.PickupPoint.Name}" } }
+                    Shipping = details.IsPickup && details.PickupPoint != null
+                        ? new Shipping { Name = new Name { FullName = $"S2S {details.PickupPoint.Name}" } }
                         : null,
                     Items = items,
                     Amount = orderAmount,
-                    SupplementaryData = new() { Card = cardData }
+                    SupplementaryData = new SupplementaryData { Card = cardData }
                 });
                 var updateRequest = new UpdateOrderRequest<object>(patches) { OrderId = order.Id };
-                await _httpClient.RequestAsync<UpdateOrderRequest<object>, EmptyResponse>(updateRequest, settings);
+                _httpClient.Request<UpdateOrderRequest<object>, EmptyResponse>(updateRequest, settings);
 
                 //place order immediately, if the appropriate setting is enabled
                 if (placement == ButtonPlacement.PaymentMethod)
                     return (order, settings.SkipOrderConfirmPage);
 
                 //or update billing details and redirect customer to the confirmation page
-                if (order.Payer is not null)
+                if (order.Payer != null)
                 {
-                    var firstName = await _genericAttributeService.GetAttributeAsync<string>(customer, NopCustomerDefaults.FirstNameAttribute);
-                    var lastName = await _genericAttributeService.GetAttributeAsync<string>(customer, NopCustomerDefaults.LastNameAttribute);
-                    var billingCountry = await _countryService.GetCountryByTwoLetterIsoCodeAsync(order.Payer.Address?.CountryCode);
-                    var billingState = await _stateProvinceService
-                        .GetStateProvinceByAbbreviationAsync(order.Payer.Address?.AdminArea1, billingCountry?.Id);
-                    var billingAddress = await PrepareCustomerAddressAsync(customer, new()
+                    var firstName = _genericAttributeService.GetAttribute<string>(customer, NopCustomerDefaults.FirstNameAttribute);
+                    var lastName = _genericAttributeService.GetAttribute<string>(customer, NopCustomerDefaults.LastNameAttribute);
+                    var billingCountry = _countryService.GetCountryByTwoLetterIsoCode(order.Payer.Address?.CountryCode);
+                    var billingState = _stateProvinceService
+                        .GetStateProvinceByAbbreviation(order.Payer.Address?.AdminArea1, billingCountry?.Id);
+                    var billingAddress = PrepareCustomerAddress(customer, new NopAddress
                     {
                         Email = order.Payer.EmailAddress ?? customer.Email,
                         FirstName = order.Payer.Name?.GivenName ?? firstName,
@@ -1939,17 +1862,17 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     if (billingAddress.Id != customer.BillingAddressId)
                         customer.BillingAddressId = billingAddress.Id;
 
-                    if (await _shoppingCartService.ShoppingCartRequiresShippingAsync(cart) &&
-                        await _genericAttributeService.GetAttributeAsync<NopShippingOption>(customer,
+                    if (_shoppingCartService.ShoppingCartRequiresShipping(cart) &&
+                        _genericAttributeService.GetAttribute<NopShippingOption>(customer,
                             NopCustomerDefaults.SelectedShippingOptionAttribute, store.Id) is NopShippingOption shippingOption &&
                         !shippingOption.IsPickupInStore &&
                         order.PurchaseUnits.FirstOrDefault()?.Shipping is Shipping shipping &&
                         shipping.Address is Address shippingAddress)
                     {
-                        var shippingCountry = await _countryService.GetCountryByTwoLetterIsoCodeAsync(shippingAddress.CountryCode);
-                        var shippingState = await _stateProvinceService
-                            .GetStateProvinceByAbbreviationAsync(shippingAddress.AdminArea1, shippingCountry?.Id);
-                        var newShippingAddress = await PrepareCustomerAddressAsync(customer, new()
+                        var shippingCountry = _countryService.GetCountryByTwoLetterIsoCode(shippingAddress.CountryCode);
+                        var shippingState = _stateProvinceService
+                            .GetStateProvinceByAbbreviation(shippingAddress.AdminArea1, shippingCountry?.Id);
+                        var newShippingAddress = PrepareCustomerAddress(customer, new NopAddress
                         {
                             Email = order.Payer.EmailAddress ?? customer.Email,
                             Address1 = shippingAddress.AddressLine1,
@@ -1963,7 +1886,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                             customer.ShippingAddressId = newShippingAddress.Id;
                     }
 
-                    await _customerService.UpdateCustomerAsync(customer);
+                    _customerService.UpdateCustomer(customer);
                 }
 
                 return (order, false);
@@ -1976,27 +1899,24 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// <param name="settings">Plugin settings</param>
         /// <param name="orderId">Order id</param>
         /// <param name="liabilityShift">Liability shift</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the placed order; created order; error message if exists
-        /// </returns>
-        public async Task<((NopOrder NopOrder, Order Order), string Error)>
-            PlaceOrderAsync(PayPalCommerceSettings settings, string orderId, string liabilityShift)
+        /// <returns>The placed order; created order; error message if exists</returns>
+        public ((NopOrder NopOrder, Order Order), string Error)
+            PlaceOrder(PayPalCommerceSettings settings, string orderId, string liabilityShift)
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
                 if (!IsConfigured(settings))
                     throw new NopException("Plugin not configured");
 
-                var customer = await _workContext.GetCurrentCustomerAsync();
-                var store = await _storeContext.GetCurrentStoreAsync();
-                var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+                var customer = _workContext.CurrentCustomer;
+                var store = _storeContext.CurrentStore;
+                var cart = _shoppingCartService.GetShoppingCart(customer, ShoppingCartType.ShoppingCart, store.Id);
                 if (!cart.Any())
                     throw new NopException("Shopping cart is empty");
 
                 var paymentRequest = _actionContextAccessor.ActionContext.HttpContext.Session
                     .Get<ProcessPaymentRequest>(PayPalCommerceDefaults.PaymentRequestSessionKey);
-                var orderIdKey = await _localizationService.GetResourceAsync("Plugins.Payments.PayPalCommerce.Order.Id");
+                var orderIdKey = _localizationService.GetResource("Plugins.Payments.PayPalCommerce.Order.Id");
                 if (paymentRequest is null ||
                     !paymentRequest.CustomValues.TryGetValue(orderIdKey, out var orderIdValue) ||
                     !string.Equals(orderIdValue.ToString(), orderId, StringComparison.InvariantCultureIgnoreCase))
@@ -2005,8 +1925,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 }
 
                 //check the order status
-                var order = await _httpClient
-                    .RequestAsync<GetOrderRequest, GetOrderResponse>(new GetOrderRequest { OrderId = orderId }, settings) as Order;
+                var order = _httpClient
+                    .Request<GetOrderRequest, GetOrderResponse>(new GetOrderRequest { OrderId = orderId }, settings) as Order;
                 if (order.Status?.ToUpper() != OrderStatusType.APPROVED.ToString() && order.Status?.ToUpper() != OrderStatusType.COMPLETED.ToString())
                 {
                     if (order.Status?.ToUpper() == OrderStatusType.CREATED.ToString())
@@ -2021,15 +1941,12 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                         throw new NopException($"Order is in '{order.Status}' status");
                 }
 
-                if (order.PurchaseUnits.FirstOrDefault() is not PurchaseUnit unit ||
-                    !string.Equals(unit.CustomId, paymentRequest.OrderGuid.ToString(), StringComparison.InvariantCultureIgnoreCase))
-                {
+                var unit = order.PurchaseUnits.FirstOrDefault();
+                if (unit is null || !string.Equals(unit.CustomId, paymentRequest.OrderGuid.ToString(), StringComparison.InvariantCultureIgnoreCase))
                     throw new NopException("Failed to get PayPal order info");
-                }
 
                 //totals must match
-                var (cartTotal, _, _, _, _, _) = await _orderTotalCalculationService
-                    .GetShoppingCartTotalAsync(cart, usePaymentMethodAdditionalFee: false);
+                var cartTotal = _orderTotalCalculationService.GetShoppingCartTotal(cart, usePaymentMethodAdditionalFee: false);
                 var difference = Math.Abs(ConvertMoney(unit.Amount) - Math.Round(cartTotal ?? decimal.Zero, 2));
                 if (difference > decimal.Zero)
                     throw new NopException($"Shopping cart total and approved order amount differ by {difference}");
@@ -2037,18 +1954,18 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 //prevent 2 orders being placed within an X seconds time frame
                 if (_orderSettings.MinimumOrderPlacementInterval > 0)
                 {
-                    var lastOrder = (await _orderService.SearchOrdersAsync(storeId: store.Id, customerId: customer.Id, pageSize: 1)).FirstOrDefault();
-                    if (lastOrder is not null && (DateTime.UtcNow - lastOrder.CreatedOnUtc).TotalSeconds < _orderSettings.MinimumOrderPlacementInterval)
-                        throw new NopException(await _localizationService.GetResourceAsync("Checkout.MinOrderPlacementInterval"));
+                    var lastOrder = (_orderService.SearchOrders(storeId: store.Id, customerId: customer.Id, pageSize: 1)).FirstOrDefault();
+                    if (lastOrder != null && (DateTime.UtcNow - lastOrder.CreatedOnUtc).TotalSeconds < _orderSettings.MinimumOrderPlacementInterval)
+                        throw new NopException(_localizationService.GetResource("Checkout.MinOrderPlacementInterval"));
                 }
 
                 paymentRequest.StoreId = store.Id;
                 paymentRequest.CustomerId = customer.Id;
                 paymentRequest.PaymentMethodSystemName = PayPalCommerceDefaults.SystemName;
-                paymentRequest.CustomValues.Remove(await _localizationService.GetResourceAsync("Plugins.Payments.PayPalCommerce.Order.Placement"));
+                paymentRequest.CustomValues.Remove(_localizationService.GetResource("Plugins.Payments.PayPalCommerce.Order.Placement"));
 
                 //try to place an order
-                var placeOrderResult = await _orderProcessingService.PlaceOrderAsync(paymentRequest);
+                var placeOrderResult = _orderProcessingService.PlaceOrder(paymentRequest);
                 if (placeOrderResult?.Success != true || placeOrderResult.PlacedOrder is null)
                     throw new NopException(string.Join(',', placeOrderResult?.Errors ?? new List<string>()));
 
@@ -2066,13 +1983,10 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// <param name="settings">Plugin settings</param>
         /// <param name="nopOrder">Placed order</param>
         /// <param name="order">Order</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the confirmed order; error message if exists
-        /// </returns>
-        public async Task<(Order Order, string Error)> ConfirmOrderAsync(PayPalCommerceSettings settings, NopOrder nopOrder, Order order)
+        /// <returns>The confirmed order; error message if exists</returns>
+        public (Order Order, string Error) ConfirmOrder(PayPalCommerceSettings settings, NopOrder nopOrder, Order order)
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
                 if (!IsConfigured(settings))
                     throw new NopException("Plugin not configured");
@@ -2088,13 +2002,13 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                         Value = nopOrder.CustomOrderNumber
                     };
                     var updateRequest = new UpdateOrderRequest<object>(new List<Patch<object>> { patch }) { OrderId = order.Id };
-                    await _httpClient.RequestAsync<UpdateOrderRequest<object>, EmptyResponse>(updateRequest, settings);
+                    _httpClient.Request<UpdateOrderRequest<object>, EmptyResponse>(updateRequest, settings);
 
                     order = settings.PaymentType switch
                     {
-                        Domain.PaymentType.Authorize => await _httpClient.RequestAsync<CreateAuthorizationRequest, CreateAuthorizationResponse>
+                        Domain.PaymentType.Authorize => _httpClient.Request<CreateAuthorizationRequest, CreateAuthorizationResponse>
                             (new CreateAuthorizationRequest { OrderId = order.Id }, settings),
-                        Domain.PaymentType.Capture => await _httpClient.RequestAsync<Api.Orders.CreateCaptureRequest, Api.Orders.CreateCaptureResponse>
+                        Domain.PaymentType.Capture => _httpClient.Request<Api.Orders.CreateCaptureRequest, Api.Orders.CreateCaptureResponse>
                             (new Api.Orders.CreateCaptureRequest { OrderId = order.Id }, settings),
                         _ => null
                     };
@@ -2103,14 +2017,14 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 //check the authorization object or the capture object
                 var purchaseUnit = order.PurchaseUnits.FirstOrDefault();
                 var authorization = purchaseUnit.Payments?.Authorizations?.FirstOrDefault();
-                if (authorization is not null)
+                if (authorization != null)
                 {
                     if (authorization.Status?.ToUpper() == AuthorizationStatusType.DENIED.ToString())
                         throw new NopException("Cannot authorize funds for this authorized payment");
 
                     if (authorization.Status?.ToUpper() == AuthorizationStatusType.PENDING.ToString())
                     {
-                        await _orderService.InsertOrderNoteAsync(new()
+                        _orderService.InsertOrderNote(new OrderNote
                         {
                             OrderId = nopOrder.Id,
                             Note = $"Authorization is in {authorization.Status} status due to {authorization.StatusDetails?.Reason}",
@@ -2129,13 +2043,13 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                             nopOrder.AuthorizationTransactionId = authorization.Id;
                             nopOrder.AuthorizationTransactionResult = authorization.Status;
                             nopOrder.AuthorizationTransactionCode = authorization.ProcessorResponse?.ResponseCode;
-                            await _orderProcessingService.MarkAsAuthorizedAsync(nopOrder);
+                            _orderProcessingService.MarkAsAuthorized(nopOrder);
                         }
                     }
                 }
 
                 var capture = purchaseUnit.Payments?.Captures?.FirstOrDefault();
-                if (capture is not null)
+                if (capture != null)
                 {
                     if (capture.Status?.ToUpper() == CaptureStatusType.DECLINED.ToString())
                         throw new NopException("The funds could not be captured");
@@ -2145,7 +2059,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
 
                     if (capture.Status?.ToUpper() == CaptureStatusType.PENDING.ToString())
                     {
-                        await _orderService.InsertOrderNoteAsync(new()
+                        _orderService.InsertOrderNote(new OrderNote
                         {
                             OrderId = nopOrder.Id,
                             Note = $"Capture is in {capture.Status} status due to {capture.StatusDetails?.Reason}",
@@ -2163,7 +2077,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                         {
                             nopOrder.CaptureTransactionId = capture.Id;
                             nopOrder.CaptureTransactionResult = capture.Status;
-                            await _orderProcessingService.MarkOrderAsPaidAsync(nopOrder);
+                            _orderProcessingService.MarkOrderAsPaid(nopOrder);
                         }
                     }
                 }
@@ -2172,7 +2086,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 var vaultedPaymentMethod = order.PaymentSource?.Vault;
                 if (vaultedPaymentMethod?.Status?.ToUpper() == VaultStatusType.VAULTED.ToString())
                 {
-                    await _tokenService.InsertAsync(new()
+                    _tokenService.Insert(new PayPalToken
                     {
                         ClientId = settings.ClientId,
                         CustomerId = nopOrder.CustomerId,
@@ -2180,11 +2094,11 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                         VaultId = vaultedPaymentMethod.Id,
                         VaultCustomerId = vaultedPaymentMethod.Customer?.Id,
                         TransactionId = order.Id,
-                        Type = order.PaymentSource?.Card is not null
+                        Type = order.PaymentSource?.Card != null
                             ? nameof(order.PaymentSource.Card)
-                            : (order.PaymentSource?.Venmo is not null
+                            : (order.PaymentSource?.Venmo != null
                             ? nameof(order.PaymentSource.Venmo)
-                            : (order.PaymentSource?.PayPal is not null
+                            : (order.PaymentSource?.PayPal != null
                             ? nameof(order.PaymentSource.PayPal)
                             : null))
                     });
@@ -2201,46 +2115,43 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// </summary>
         /// <param name="placement">Button placement</param>
         /// <param name="withShipping">Whether to prepare shipping details</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the Apple Pay transaction info; error message if exists
-        /// </returns>
-        public async Task<((OrderMoney Amount, Contact BillingAddress, Contact ShippingAddress, Shipping Shipping, string StoreName), string Error)>
-            GetAppleTransactionInfoAsync(ButtonPlacement placement, bool withShipping)
+        /// <returns>The Apple Pay transaction info; error message if exists</returns>
+        public ((OrderMoney Amount, Contact BillingAddress, Contact ShippingAddress, Shipping Shipping, string StoreName), string Error)
+            GetAppleTransactionInfo(ButtonPlacement placement, bool withShipping)
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
-                var currencyCode = (await _currencyService.GetCurrencyByIdAsync(_currencySettings.PrimaryStoreCurrencyId))?.CurrencyCode;
+                var currencyCode = _currencyService.GetCurrencyById(_currencySettings.PrimaryStoreCurrencyId)?.CurrencyCode;
                 if (string.IsNullOrEmpty(currencyCode))
                     throw new NopException("Primary store currency not set");
 
-                var customer = await _workContext.GetCurrentCustomerAsync();
-                var store = await _storeContext.GetCurrentStoreAsync();
-                var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+                var customer = _workContext.CurrentCustomer;
+                var store = _storeContext.CurrentStore;
+                var cart = _shoppingCartService.GetShoppingCart(customer, ShoppingCartType.ShoppingCart, store.Id);
                 if (!cart.Any())
                     throw new NopException("Shopping cart is empty");
 
-                var billingAddress = await _customerService.GetCustomerBillingAddressAsync(customer);
+                var billingAddress = _customerService.GetCustomerBillingAddress(customer);
                 if (placement == ButtonPlacement.PaymentMethod && billingAddress is null)
                     throw new NopException("Customer billing address not set");
 
-                var shippingIsRequired = await _shoppingCartService.ShoppingCartRequiresShippingAsync(cart);
-                var shippingOption = await _genericAttributeService
-                    .GetAttributeAsync<NopShippingOption>(customer, NopCustomerDefaults.SelectedShippingOptionAttribute, store.Id);
-                var pickupPoint = await _genericAttributeService
-                    .GetAttributeAsync<PickupPoint>(customer, NopCustomerDefaults.SelectedPickupPointAttribute, store.Id);
-                var pickupInStore = _shippingSettings.AllowPickupInStore && pickupPoint is not null;
+                var shippingIsRequired = _shoppingCartService.ShoppingCartRequiresShipping(cart);
+                var shippingOption = _genericAttributeService
+                    .GetAttribute<NopShippingOption>(customer, NopCustomerDefaults.SelectedShippingOptionAttribute, store.Id);
+                var pickupPoint = _genericAttributeService
+                    .GetAttribute<PickupPoint>(customer, NopCustomerDefaults.SelectedPickupPointAttribute, store.Id);
+                var pickupInStore = _shippingSettings.AllowPickupInStore && pickupPoint != null;
                 var shippingAddress = pickupInStore ? new NopAddress
                 {
                     Address1 = pickupPoint.Address,
                     City = pickupPoint.City,
                     County = pickupPoint.County,
-                    CountryId = (await _countryService.GetCountryByTwoLetterIsoCodeAsync(pickupPoint.CountryCode))?.Id,
-                    StateProvinceId = (await _stateProvinceService.GetStateProvinceByAbbreviationAsync(pickupPoint.StateAbbreviation,
-                        (await _countryService.GetCountryByTwoLetterIsoCodeAsync(pickupPoint.CountryCode))?.Id))?.Id,
+                    CountryId = _countryService.GetCountryByTwoLetterIsoCode(pickupPoint.CountryCode)?.Id,
+                    StateProvinceId = _stateProvinceService.GetStateProvinceByAbbreviation(pickupPoint.StateAbbreviation,
+                        _countryService.GetCountryByTwoLetterIsoCode(pickupPoint.CountryCode)?.Id)?.Id,
                     ZipPostalCode = pickupPoint.ZipPostalCode,
                     CreatedOnUtc = DateTime.UtcNow
-                } : await _addressService.GetAddressByIdAsync(customer.ShippingAddressId ?? 0);
+                } : _addressService.GetAddressById(customer.ShippingAddressId ?? 0);
                 if (placement == ButtonPlacement.PaymentMethod && shippingIsRequired && shippingAddress is null)
                     throw new NopException("Customer shipping address not set");
 
@@ -2258,30 +2169,30 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     PickupPoint = pickupPoint,
                     ShippingOption = shippingOption
                 };
-                var payer = await PrepareBillingDetailsAsync(details);
+                var payer = PrepareBillingDetails(details);
                 var billingContact = new Contact
                 {
                     Email = payer.EmailAddress,
                     FirstName = payer.Name.GivenName,
                     LastName = payer.Name.Surname,
-                    AddressLines = new() { payer.Address?.AddressLine1, payer.Address?.AddressLine2 },
+                    AddressLines = new List<string> { payer.Address?.AddressLine1, payer.Address?.AddressLine2 },
                     City = payer.Address?.AdminArea2,
                     State = payer.Address?.AdminArea1,
                     Country = payer.Address?.CountryCode,
                     PostalCode = payer.Address?.PostalCode
                 };
 
-                var items = await PrepareOrderItemsAsync(details);
-                var orderAmount = await PrepareOrderMoneyAsync(details, items);
+                var items = PrepareOrderItems(details);
+                var orderAmount = PrepareOrderMoney(details, items);
 
-                var firstName = await _genericAttributeService.GetAttributeAsync<string>(customer, NopCustomerDefaults.FirstNameAttribute);
-                var lastName = await _genericAttributeService.GetAttributeAsync<string>(customer, NopCustomerDefaults.LastNameAttribute);
-                var shipping = await PrepareShippingDetailsAsync(details, shippingOption?.Name, true);
+                var firstName = _genericAttributeService.GetAttribute<string>(customer, NopCustomerDefaults.FirstNameAttribute);
+                var lastName = _genericAttributeService.GetAttribute<string>(customer, NopCustomerDefaults.LastNameAttribute);
+                var shipping = PrepareShippingDetails(details, shippingOption?.Name, true);
                 var shippingContact = new Contact
                 {
-                    FirstName = shippingAddress is not null && !pickupInStore ? shippingAddress.FirstName : firstName,
-                    LastName = shippingAddress is not null && !pickupInStore ? shippingAddress.LastName : lastName,
-                    AddressLines = new() { shipping.Address?.AddressLine1, shipping.Address?.AddressLine2 },
+                    FirstName = shippingAddress != null && !pickupInStore ? shippingAddress.FirstName : firstName,
+                    LastName = shippingAddress != null && !pickupInStore ? shippingAddress.LastName : lastName,
+                    AddressLines = new List<string> { shipping.Address?.AddressLine1, shipping.Address?.AddressLine2 },
                     City = shipping.Address?.AdminArea2,
                     State = shipping.Address?.AdminArea1,
                     Country = shipping.Address?.CountryCode,
@@ -2299,22 +2210,19 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// <param name="placement">Button placement</param>
         /// <param name="selectedAddress">Selected shipping address</param>
         /// <param name="selectedOption">Selected shipping option</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the updated shipping details; error message if exists
-        /// </returns>
-        public async Task<(Shipping Shipping, string Error)> UpdateAppleShippingAsync(ButtonPlacement placement,
+        /// <returns>The updated shipping details; error message if exists</returns>
+        public (Shipping Shipping, string Error) UpdateAppleShipping(ButtonPlacement placement,
             (string City, string State, string Country, string PostalCode) selectedAddress, string selectedOption)
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
-                var currencyCode = (await _currencyService.GetCurrencyByIdAsync(_currencySettings.PrimaryStoreCurrencyId))?.CurrencyCode;
+                var currencyCode = _currencyService.GetCurrencyById(_currencySettings.PrimaryStoreCurrencyId)?.CurrencyCode;
                 if (string.IsNullOrEmpty(currencyCode))
                     throw new NopException("Primary store currency not set");
 
-                var customer = await _workContext.GetCurrentCustomerAsync();
-                var store = await _storeContext.GetCurrentStoreAsync();
-                var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+                var customer = _workContext.CurrentCustomer;
+                var store = _storeContext.CurrentStore;
+                var cart = _shoppingCartService.GetShoppingCart(customer, ShoppingCartType.ShoppingCart, store.Id);
                 if (!cart.Any())
                     throw new NopException("Shopping cart is empty");
 
@@ -2322,12 +2230,12 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 if (placement == ButtonPlacement.PaymentMethod)
                     return null;
 
-                var shippingIsRequired = await _shoppingCartService.ShoppingCartRequiresShippingAsync(cart);
+                var shippingIsRequired = _shoppingCartService.ShoppingCartRequiresShipping(cart);
                 if (!shippingIsRequired)
                     return null;
 
                 //get option id
-                var optionValues = selectedOption?.Split('|', StringSplitOptions.RemoveEmptyEntries)?.ToList() ?? new();
+                var optionValues = selectedOption?.Split('|', StringSplitOptions.RemoveEmptyEntries)?.ToList() ?? new List<string>();
                 var option = (optionValues.FirstOrDefault(), optionValues.LastOrDefault());
 
                 var details = new CartDetails
@@ -2339,7 +2247,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     CurrencyCode = currencyCode,
                     ShippingIsRequired = shippingIsRequired
                 };
-                var shipping = await PrepareUpdatedShippingAsync(details, customer.Email, selectedAddress, option);
+                var shipping = PrepareUpdatedShipping(details, customer.Email, selectedAddress, option);
 
                 return shipping;
             });
@@ -2349,26 +2257,23 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// Get Google Pay transaction info
         /// </summary>
         /// <param name="placement">Button placement</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the Google Pay transaction info; error message if exists
-        /// </returns>
-        public async Task<((OrderMoney Amount, string Country, bool ShippingIsRequired), string Error)>
-            GetGoogleTransactionInfoAsync(ButtonPlacement placement)
+        /// <returns>The Google Pay transaction info; error message if exists</returns>
+        public ((OrderMoney Amount, string Country, bool ShippingIsRequired), string Error)
+            GetGoogleTransactionInfo(ButtonPlacement placement)
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
-                var currencyCode = (await _currencyService.GetCurrencyByIdAsync(_currencySettings.PrimaryStoreCurrencyId))?.CurrencyCode;
+                var currencyCode = _currencyService.GetCurrencyById(_currencySettings.PrimaryStoreCurrencyId)?.CurrencyCode;
                 if (string.IsNullOrEmpty(currencyCode))
                     throw new NopException("Primary store currency not set");
 
-                var customer = await _workContext.GetCurrentCustomerAsync();
-                var store = await _storeContext.GetCurrentStoreAsync();
-                var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+                var customer = _workContext.CurrentCustomer;
+                var store = _storeContext.CurrentStore;
+                var cart = _shoppingCartService.GetShoppingCart(customer, ShoppingCartType.ShoppingCart, store.Id);
                 if (!cart.Any())
                     throw new NopException("Shopping cart is empty");
 
-                var billingAddress = await _customerService.GetCustomerBillingAddressAsync(customer);
+                var billingAddress = _customerService.GetCustomerBillingAddress(customer);
                 if (placement == ButtonPlacement.PaymentMethod && billingAddress is null)
                     throw new NopException("Customer billing address not set");
 
@@ -2380,12 +2285,12 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     Cart = cart.ToList(),
                     CurrencyCode = currencyCode
                 };
-                var items = await PrepareOrderItemsAsync(details);
-                var orderAmount = await PrepareOrderMoneyAsync(details, items);
+                var items = PrepareOrderItems(details);
+                var orderAmount = PrepareOrderMoney(details, items);
 
-                var countryId = await _genericAttributeService.GetAttributeAsync<int>(customer, NopCustomerDefaults.CountryIdAttribute);
-                var country = await _countryService.GetCountryByIdAsync(billingAddress?.CountryId ?? countryId);
-                var shippingIsRequired = await _shoppingCartService.ShoppingCartRequiresShippingAsync(cart);
+                var countryId = _genericAttributeService.GetAttribute<int>(customer, NopCustomerDefaults.CountryIdAttribute);
+                var country = _countryService.GetCountryById(billingAddress?.CountryId ?? countryId);
+                var shippingIsRequired = _shoppingCartService.ShoppingCartRequiresShipping(cart);
 
                 return (orderAmount, country?.TwoLetterIsoCode ?? "US", shippingIsRequired);
             });
@@ -2397,22 +2302,19 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// <param name="placement">Button placement</param>
         /// <param name="selectedAddress">Selected shipping address</param>
         /// <param name="selectedOption">Selected shipping option</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the updated shipping details; error message if exists
-        /// </returns>
-        public async Task<(Shipping Shipping, string Error)> UpdateGoogleShippingAsync(ButtonPlacement placement,
+        /// <returns>The updated shipping details; error message if exists</returns>
+        public (Shipping Shipping, string Error) UpdateGoogleShipping(ButtonPlacement placement,
             (string City, string State, string Country, string PostalCode) selectedAddress, string selectedOption)
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
-                var currencyCode = (await _currencyService.GetCurrencyByIdAsync(_currencySettings.PrimaryStoreCurrencyId))?.CurrencyCode;
+                var currencyCode = _currencyService.GetCurrencyById(_currencySettings.PrimaryStoreCurrencyId)?.CurrencyCode;
                 if (string.IsNullOrEmpty(currencyCode))
                     throw new NopException("Primary store currency not set");
 
-                var customer = await _workContext.GetCurrentCustomerAsync();
-                var store = await _storeContext.GetCurrentStoreAsync();
-                var cart = await _shoppingCartService.GetShoppingCartAsync(customer, ShoppingCartType.ShoppingCart, store.Id);
+                var customer = _workContext.CurrentCustomer;
+                var store = _storeContext.CurrentStore;
+                var cart = _shoppingCartService.GetShoppingCart(customer, ShoppingCartType.ShoppingCart, store.Id);
                 if (!cart.Any())
                     throw new NopException("Shopping cart is empty");
 
@@ -2420,12 +2322,12 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 if (placement == ButtonPlacement.PaymentMethod)
                     return null;
 
-                var shippingIsRequired = await _shoppingCartService.ShoppingCartRequiresShippingAsync(cart);
+                var shippingIsRequired = _shoppingCartService.ShoppingCartRequiresShipping(cart);
                 if (!shippingIsRequired)
                     return null;
 
                 //get option id
-                var optionValues = selectedOption?.Split('|', StringSplitOptions.RemoveEmptyEntries)?.ToList() ?? new();
+                var optionValues = selectedOption?.Split('|', StringSplitOptions.RemoveEmptyEntries)?.ToList() ?? new List<string>();
                 var option = (optionValues.FirstOrDefault(), optionValues.LastOrDefault());
 
                 var details = new CartDetails
@@ -2437,7 +2339,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     CurrencyCode = currencyCode,
                     ShippingIsRequired = shippingIsRequired
                 };
-                var shipping = await PrepareUpdatedShippingAsync(details, customer.Email, selectedAddress, option);
+                var shipping = PrepareUpdatedShipping(details, customer.Email, selectedAddress, option);
 
                 return shipping;
             });
@@ -2454,13 +2356,10 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// </summary>
         /// <param name="settings">Plugin settings</param>
         /// <param name="authorizationId">Authorization id</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the capture details; error message if exists
-        /// </returns>
-        public async Task<(Capture Capture, string Error)> CaptureAuthorizationAsync(PayPalCommerceSettings settings, string authorizationId)
+        /// <returns>The capture details; error message if exists</returns>
+        public (Capture Capture, string Error) CaptureAuthorization(PayPalCommerceSettings settings, string authorizationId)
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
                 if (!IsConfigured(settings))
                     throw new NopException("Plugin not configured");
@@ -2469,7 +2368,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     throw new NopException("Authorization ID not set");
 
                 var request = new Api.Payments.CreateCaptureRequest { AuthorizationId = authorizationId };
-                var capture = await _httpClient.RequestAsync<Api.Payments.CreateCaptureRequest, Api.Payments.CreateCaptureResponse>(request, settings);
+                var capture = _httpClient.Request<Api.Payments.CreateCaptureRequest, Api.Payments.CreateCaptureResponse>(request, settings);
 
                 if (capture.Status?.ToUpper() == CaptureStatusType.DECLINED.ToString())
                     throw new NopException("The funds could not be captured");
@@ -2489,13 +2388,10 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// </summary>
         /// <param name="settings">Plugin settings</param>
         /// <param name="authorizationId">Authorization id</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the void result; error message if exists
-        /// </returns>
-        public async Task<(bool Result, string Error)> VoidAsync(PayPalCommerceSettings settings, string authorizationId)
+        /// <returns>The void result; error message if exists</returns>
+        public (bool Result, string Error) Void(PayPalCommerceSettings settings, string authorizationId)
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
                 if (!IsConfigured(settings))
                     throw new NopException("Plugin not configured");
@@ -2504,7 +2400,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     throw new NopException("Authorization ID not set");
 
                 var request = new CreateVoidRequest { AuthorizationId = authorizationId };
-                await _httpClient.RequestAsync<CreateVoidRequest, EmptyResponse>(request, settings);
+                _httpClient.Request<CreateVoidRequest, EmptyResponse>(request, settings);
 
                 return true;
             });
@@ -2516,18 +2412,15 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// <param name="settings">Plugin settings</param>
         /// <param name="nopOrder">Order</param>
         /// <param name="amount">Amount to refund; pass null to refund the full captured amount</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the refund details; error message if exists
-        /// </returns>
-        public async Task<(Refund Refund, string Error)> RefundAsync(PayPalCommerceSettings settings, NopOrder nopOrder, decimal? amount = null)
+        /// <returns>The refund details; error message if exists</returns>
+        public (Refund Refund, string Error) Refund(PayPalCommerceSettings settings, NopOrder nopOrder, decimal? amount = null)
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
                 if (!IsConfigured(settings))
                     throw new NopException("Plugin not configured");
 
-                var currencyCode = (await _currencyService.GetCurrencyByIdAsync(_currencySettings.PrimaryStoreCurrencyId))?.CurrencyCode;
+                var currencyCode = _currencyService.GetCurrencyById(_currencySettings.PrimaryStoreCurrencyId)?.CurrencyCode;
                 if (string.IsNullOrEmpty(currencyCode))
                     throw new NopException("Primary store currency not set");
 
@@ -2539,7 +2432,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     CaptureId = nopOrder.CaptureTransactionId,
                     Amount = amount.HasValue ? PrepareMoney(amount.Value, currencyCode) : null
                 };
-                var refund = await _httpClient.RequestAsync<CreateRefundRequest, CreateRefundResponse>(request, settings);
+                var refund = _httpClient.Request<CreateRefundRequest, CreateRefundResponse>(request, settings);
 
                 if (refund.Status?.ToUpper() == RefundStatusType.CANCELLED.ToString())
                     throw new NopException("The refund was cancelled");
@@ -2551,12 +2444,12 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     throw new NopException($"Capture is in {refund.Status} status due to {refund.StatusDetails?.Reason}");
 
                 //save id to avoid double refund
-                var refundIds = await _genericAttributeService
-                    .GetAttributeAsync<List<string>>(nopOrder, PayPalCommerceDefaults.RefundIdAttributeName)
-                    ?? new();
+                var refundIds = _genericAttributeService
+                    .GetAttribute<List<string>>(nopOrder, PayPalCommerceDefaults.RefundIdAttributeName)
+                    ?? new List<string>();
                 if (!refundIds.Contains(refund.Id))
                     refundIds.Add(refund.Id);
-                await _genericAttributeService.SaveAttributeAsync(nopOrder, PayPalCommerceDefaults.RefundIdAttributeName, refundIds);
+                _genericAttributeService.SaveAttribute(nopOrder, PayPalCommerceDefaults.RefundIdAttributeName, refundIds);
 
                 return refund;
             });
@@ -2571,41 +2464,40 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// </summary>
         /// <param name="settings">Plugin settings</param>
         /// <param name="shipment">Shipment</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the operation result; error message if exists
-        /// </returns>
-        public async Task<(bool Result, string Error)> SetTrackingAsync(PayPalCommerceSettings settings, Shipment shipment)
+        /// <returns>The operation result; error message if exists</returns>
+        public (bool Result, string Error) SetTracking(PayPalCommerceSettings settings, Shipment shipment)
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
                 if (!IsConfigured(settings))
                     throw new NopException("Plugin not configured");
 
-                var carrier = await _genericAttributeService.GetAttributeAsync<string>(shipment, PayPalCommerceDefaults.ShipmentCarrierAttribute);
+                var carrier = _genericAttributeService.GetAttribute<string>(shipment, PayPalCommerceDefaults.ShipmentCarrierAttribute);
                 if (string.IsNullOrEmpty(carrier))
                     return false;
 
-                var nopOrder = await _orderService.GetOrderByIdAsync(shipment?.OrderId ?? 0)
+                var nopOrder = _orderService.GetOrderById(shipment?.OrderId ?? 0)
                     ?? throw new NopException("Order cannot be loaded");
 
                 if (!string.Equals(nopOrder.PaymentMethodSystemName, PayPalCommerceDefaults.SystemName, StringComparison.InvariantCultureIgnoreCase))
                     return false;
 
                 var customValues = _paymentService.DeserializeCustomValues(nopOrder);
-                var orderIdKey = await _localizationService.GetResourceAsync("Plugins.Payments.PayPalCommerce.Order.Id");
+                var orderIdKey = _localizationService.GetResource("Plugins.Payments.PayPalCommerce.Order.Id");
                 if (!customValues.TryGetValue(orderIdKey, out var orderIdValue))
                     throw new NopException("Failed to get PayPal order info");
 
-                var order = await _httpClient
-                    .RequestAsync<GetOrderRequest, GetOrderResponse>(new GetOrderRequest { OrderId = orderIdValue.ToString() }, settings) as Order;
+                var order = _httpClient
+                    .Request<GetOrderRequest, GetOrderResponse>(new GetOrderRequest { OrderId = orderIdValue.ToString() }, settings) as Order;
                 if (order.Status?.ToUpper() != OrderStatusType.COMPLETED.ToString())
                     throw new NopException($"Unable to assign tracking information to orders in {order.Status} status");
 
-                if (order.PurchaseUnits?.FirstOrDefault() is not PurchaseUnit unit || unit.Shipping is null)
+                var unit = order.PurchaseUnits?.FirstOrDefault();
+                if (unit?.Shipping is null)
                     throw new NopException("No shipping info found for PayPal order");
 
-                if (unit.Payments?.Captures?.FirstOrDefault() is not Capture capture ||
+                var capture = unit.Payments?.Captures?.FirstOrDefault();
+                if (capture is null ||
                     (capture.Status?.ToUpper() != CaptureStatusType.COMPLETED.ToString() &&
                     capture.Status?.ToUpper() != CaptureStatusType.PARTIALLY_REFUNDED.ToString() &&
                     capture.Status?.ToUpper() != CaptureStatusType.PENDING.ToString()))
@@ -2614,16 +2506,16 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 }
 
                 var urlHelper = _urlHelperFactory.GetUrlHelper(_actionContextAccessor.ActionContext);
-                var shipmentItems = await _shipmentService.GetShipmentItemsByShipmentIdAsync(shipment.Id);
-                var items = await shipmentItems.SelectAwait(async shipmentItem =>
+                var shipmentItems = _shipmentService.GetShipmentItemsByShipmentId(shipment.Id);
+                var items = shipmentItems.Select(shipmentItem =>
                 {
-                    var orderItem = await _orderService.GetOrderItemByIdAsync(shipmentItem.OrderItemId);
-                    var product = await _productService.GetProductByIdAsync(orderItem.ProductId);
-                    var sku = await _productService.FormatSkuAsync(product, orderItem.AttributesXml);
-                    var seName = await _urlRecordService.GetSeNameAsync(product);
-                    var url = urlHelper.RouteUrl("Product", new { SeName = seName }, _webHelper.GetCurrentRequestProtocol());
-                    var picture = await _pictureService.GetProductPictureAsync(product, orderItem.AttributesXml);
-                    var (imageUrl, _) = await _pictureService.GetPictureUrlAsync(picture);
+                    var orderItem = _orderService.GetOrderItemById(shipmentItem.OrderItemId);
+                    var product = _productService.GetProductById(orderItem.ProductId);
+                    var sku = _productService.FormatSku(product, orderItem.AttributesXml);
+                    var seName = _urlRecordService.GetSeName(product);
+                    var url = urlHelper.RouteUrl("Product", new { SeName = seName }, _webHelper.CurrentRequestProtocol);
+                    var picture = _pictureService.GetProductPicture(product, orderItem.AttributesXml);
+                    var imageUrl = _pictureService.GetPictureUrl(ref picture);
 
                     return new Item
                     {
@@ -2634,7 +2526,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                         Url = url,
                         ImageUrl = imageUrl
                     };
-                }).ToListAsync();
+                }).ToList();
 
                 var request = new CreateTrackingRequest
                 {
@@ -2645,7 +2537,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     Carrier = carrier,
                     Items = items
                 };
-                order = await _httpClient.RequestAsync<CreateTrackingRequest, CreateTrackingResponse>(request, settings);
+                order = _httpClient.Request<CreateTrackingRequest, CreateTrackingResponse>(request, settings);
 
                 return true;
             });
@@ -2660,18 +2552,15 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// </summary>
         /// <param name="settings">Plugin settings</param>
         /// <param name="webhookUrl">Webhook URL</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the webhook; error message if exists
-        /// </returns>
-        public async Task<(Webhook Webhook, string Error)> GetWebhookAsync(PayPalCommerceSettings settings, string webhookUrl)
+        /// <returns>The webhook; error message if exists</returns>
+        public (Webhook Webhook, string Error) GetWebhook(PayPalCommerceSettings settings, string webhookUrl)
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
                 if (!IsConfigured(settings))
                     throw new NopException("Plugin not configured");
 
-                var webhookList = await _httpClient.RequestAsync<GetWebhooksRequest, GetWebhooksResponse>(new(), settings);
+                var webhookList = _httpClient.Request<GetWebhooksRequest, GetWebhooksResponse>(new GetWebhooksRequest(), settings);
                 var webhookByUrl = webhookList?.Webhooks
                     ?.FirstOrDefault(webhook => webhook.Url?.Equals(webhookUrl, StringComparison.InvariantCultureIgnoreCase) ?? false);
 
@@ -2684,13 +2573,10 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// </summary>
         /// <param name="settings">Plugin settings</param>
         /// <param name="storeId">Store id</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the webhook; error message if exists
-        /// </returns>
-        public async Task<(Webhook Webhook, string Error)> CreateWebhookAsync(PayPalCommerceSettings settings, int storeId)
+        /// <returns>The webhook; error message if exists</returns>
+        public (Webhook Webhook, string Error) CreateWebhook(PayPalCommerceSettings settings, int storeId)
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
                 if (!IsConfigured(settings))
                     throw new NopException("Plugin not configured");
@@ -2698,13 +2584,13 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 //prepare webhook URL
                 var urlHelper = _urlHelperFactory.GetUrlHelper(_actionContextAccessor.ActionContext);
                 var store = storeId > 0
-                    ? await _storeService.GetStoreByIdAsync(storeId)
-                    : await _storeContext.GetCurrentStoreAsync();
+                    ? _storeService.GetStoreById(storeId)
+                    : _storeContext.CurrentStore;
                 var webhookUrl = $"{store.Url.TrimEnd('/')}{urlHelper.RouteUrl(PayPalCommerceDefaults.Route.Webhook)}".ToLowerInvariant();
 
                 //check whether the webhook already exists
-                var (webhook, _) = await GetWebhookAsync(settings, webhookUrl);
-                if (webhook is not null)
+                var (webhook, _) = GetWebhook(settings, webhookUrl);
+                if (webhook != null)
                     return webhook;
 
                 //or try to create a new one
@@ -2713,7 +2599,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     EventTypes = PayPalCommerceDefaults.WebhookEventNames.Select(name => new EventType { Name = name }).ToList(),
                     Url = webhookUrl
                 };
-                var result = await _httpClient.RequestAsync<CreateWebhookRequest, CreateWebhookResponse>(request, settings);
+                var result = _httpClient.Request<CreateWebhookRequest, CreateWebhookResponse>(request, settings);
 
                 return result;
             });
@@ -2723,17 +2609,16 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// Delete webhook
         /// </summary>
         /// <param name="settings">Plugin settings</param>
-        /// <returns>A task that represents the asynchronous operation</returns>
-        public async Task DeleteWebhookAsync(PayPalCommerceSettings settings)
+        public void DeleteWebhook(PayPalCommerceSettings settings)
         {
-            await HandleFunctionAsync(async () =>
+            HandleFunction(() =>
             {
                 if (!IsConnected(settings))
                     throw new NopException("Plugin not connected");
 
-                var (webhook, _) = await GetWebhookAsync(settings, settings.WebhookUrl);
-                if (webhook is not null)
-                    await _httpClient.RequestAsync<DeleteWebhookRequest, EmptyResponse>(new() { WebhookId = webhook.Id }, settings);
+                var (webhook, _) = GetWebhook(settings, settings.WebhookUrl);
+                if (webhook != null)
+                    _httpClient.Request<DeleteWebhookRequest, EmptyResponse>(new DeleteWebhookRequest() { WebhookId = webhook.Id }, settings);
 
                 return true;
             });
@@ -2744,10 +2629,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// </summary>
         /// <param name="settings">Plugin settings</param>
         /// <param name="request">HTTP request</param>
-        /// <returns>A task that represents the asynchronous operation</returns>
-        public async Task HandleWebhookAsync(PayPalCommerceSettings settings, Microsoft.AspNetCore.Http.HttpRequest request)
+        public void HandleWebhook(PayPalCommerceSettings settings, Microsoft.AspNetCore.Http.HttpRequest request)
         {
-            await HandleFunctionAsync(async () =>
+            HandleFunction(() =>
             {
                 //ensure that plugin is configured and connected
                 if (!IsConnected(settings))
@@ -2756,14 +2640,14 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 //get request content
                 var webhookEvent = string.Empty;
                 using (var streamReader = new StreamReader(request.Body))
-                    webhookEvent = await streamReader.ReadToEndAsync();
+                    webhookEvent = streamReader.ReadToEnd();
 
-                var (webhook, _) = await GetWebhookAsync(settings, settings.WebhookUrl);
+                var (webhook, _) = GetWebhook(settings, settings.WebhookUrl);
                 if (webhook is null)
                     throw new NopException("Webhook error", new NopException($"No webhook configured for URL '{settings.WebhookUrl}'"));
 
                 //define a local function to validate the webhook event and get its resource
-                async Task<IWebhookResource> getWebhookResource<TResource>() where TResource : class, IWebhookResource
+                IWebhookResource getWebhookResource<TResource>() where TResource : class, IWebhookResource
                 {
                     //verify webhook event data
                     var verifyRequest = new CreateWebhookSignatureRequest
@@ -2774,9 +2658,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                         TransmissionSig = request.Headers["PAYPAL-TRANSMISSION-SIG"],
                         TransmissionTime = request.Headers["PAYPAL-TRANSMISSION-TIME"],
                         WebhookId = webhook.Id,
-                        WebhookEvent = new(webhookEvent)
+                        WebhookEvent = new JRaw(webhookEvent)
                     };
-                    var result = await _httpClient.RequestAsync<CreateWebhookSignatureRequest, CreateWebhookSignatureResponse>(verifyRequest, settings);
+                    var result = _httpClient.Request<CreateWebhookSignatureRequest, CreateWebhookSignatureResponse>(verifyRequest, settings);
 
                     if (result?.VerificationStatus?.ToUpper() != WebhookSignatureVerificationStatusType.SUCCESS.ToString())
                         throw new NopException("Webhook error", new NopException($"Webhook signature verification {result?.VerificationStatus}"));
@@ -2789,20 +2673,20 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 var webhookResource = webhookResourceType switch
                 {
                     var type when string.Equals(type, nameof(Authorization), StringComparison.InvariantCultureIgnoreCase)
-                        => await getWebhookResource<Authorization>(),
+                        => getWebhookResource<Authorization>(),
                     var type when string.Equals(type, nameof(Capture), StringComparison.InvariantCultureIgnoreCase)
-                        => await getWebhookResource<Capture>(),
+                        => getWebhookResource<Capture>(),
                     var type when string.Equals(type, nameof(Refund), StringComparison.InvariantCultureIgnoreCase)
-                        => await getWebhookResource<Refund>(),
+                        => getWebhookResource<Refund>(),
                     var type when string.Equals(type?.Replace("checkout-", string.Empty), nameof(Order), StringComparison.InvariantCultureIgnoreCase)
-                        => await getWebhookResource<Order>(),
+                        => getWebhookResource<Order>(),
                     var type when string.Equals(type?.Replace("_", string.Empty), nameof(PaymentToken), StringComparison.InvariantCultureIgnoreCase)
-                        => await getWebhookResource<PaymentToken>(),
+                        => getWebhookResource<PaymentToken>(),
                     _ => null
                 } ?? throw new NopException("Webhook error", new NopException($"Unknown webhook resource type '{webhookResourceType}'"));
 
                 var paymentToken = webhookResource as PaymentToken;
-                if (paymentToken is not null)
+                if (paymentToken != null)
                 {
                     //payment token actions
                     var eventType = JsonConvert.DeserializeObject<Event<WebhookResource>>(webhookEvent)?.EventType;
@@ -2816,31 +2700,31 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                         if (string.IsNullOrEmpty(paymentToken.Metadata?.OrderId))
                             throw new NopException("Webhook error", new NopException("No transaction associated with the payment token"));
 
-                        var paymentTokenOrder = await _httpClient
-                            .RequestAsync<GetOrderRequest, GetOrderResponse>(new GetOrderRequest { OrderId = paymentToken.Metadata.OrderId }, settings);
+                        var paymentTokenOrder = _httpClient
+                            .Request<GetOrderRequest, GetOrderResponse>(new GetOrderRequest { OrderId = paymentToken.Metadata.OrderId }, settings);
                         paymentToken.CustomId = paymentTokenOrder.CustomId;
                     }
 
                     if (paymentTokenDeleted)
                     {
-                        var tokens = await _tokenService.GetAllTokensAsync(settings.ClientId, vaultId: paymentToken.Id);
+                        var tokens = _tokenService.GetAllTokens(settings.ClientId, vaultId: paymentToken.Id);
                         if (tokens.Any())
-                            await _tokenService.DeleteAsync(tokens);
+                            _tokenService.Delete(tokens);
 
                         return true;
                     }
                 }
 
                 if (!Guid.TryParse(webhookResource.CustomId, out var orderGuid) ||
-                    await _orderService.GetOrderByGuidAsync(orderGuid) is not NopOrder nopOrder)
+                    !(_orderService.GetOrderByGuid(orderGuid) is NopOrder nopOrder))
                 {
                     throw new NopException("Webhook error", new NopException($"Could not find an order '{orderGuid}'"));
                 }
 
-                if (paymentToken is not null)
+                if (paymentToken != null)
                 {
                     //payment token actions (continuation)
-                    await _tokenService.InsertAsync(new()
+                    _tokenService.Insert(new PayPalToken
                     {
                         ClientId = settings.ClientId,
                         CustomerId = nopOrder.CustomerId,
@@ -2848,11 +2732,11 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                         VaultId = paymentToken.Id,
                         VaultCustomerId = paymentToken.Customer?.Id,
                         TransactionId = paymentToken.Metadata.OrderId,
-                        Type = paymentToken.PaymentSource?.Card is not null
+                        Type = paymentToken.PaymentSource?.Card != null
                             ? nameof(paymentToken.PaymentSource.Card)
-                            : (paymentToken.PaymentSource?.Venmo is not null
+                            : (paymentToken.PaymentSource?.Venmo != null
                             ? nameof(paymentToken.PaymentSource.Venmo)
-                            : (paymentToken.PaymentSource?.PayPal is not null
+                            : (paymentToken.PaymentSource?.PayPal != null
                             ? nameof(paymentToken.PaymentSource.PayPal)
                             : null))
                     });
@@ -2860,17 +2744,16 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     return true;
                 }
 
-                await _orderService.InsertOrderNoteAsync(new()
+                _orderService.InsertOrderNote(new OrderNote
                 {
                     OrderId = nopOrder.Id,
-                    Note = $"Webhook details: {Environment.NewLine}{Newtonsoft.Json.Linq.JToken.Parse(webhookEvent).ToString(Formatting.Indented)}",
+                    Note = $"Webhook details: {Environment.NewLine}{JToken.Parse(webhookEvent).ToString(Formatting.Indented)}",
                     DisplayToCustomer = false,
                     CreatedOnUtc = DateTime.UtcNow
                 });
 
                 //authorization actions
-                var authorization = webhookResource as Authorization;
-                if (authorization is not null && Enum.TryParse<AuthorizationStatusType>(authorization.Status, true, out var authorizationStatus))
+                if (webhookResource is Authorization authorization && Enum.TryParse<AuthorizationStatusType>(authorization.Status, true, out var authorizationStatus))
                 {
                     nopOrder.AuthorizationTransactionId = authorization.Id;
                     nopOrder.AuthorizationTransactionResult = authorization.Status;
@@ -2879,13 +2762,13 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     {
                         case AuthorizationStatusType.PENDING:
                             nopOrder.PaymentStatus = PaymentStatus.Pending;
-                            await _orderProcessingService.CheckOrderStatusAsync(nopOrder);
+                            _orderProcessingService.CheckOrderStatus(nopOrder);
 
                             break;
 
                         case AuthorizationStatusType.VOIDED:
                             if (_orderProcessingService.CanVoidOffline(nopOrder))
-                                await _orderProcessingService.VoidOfflineAsync(nopOrder);
+                                _orderProcessingService.VoidOffline(nopOrder);
 
                             break;
 
@@ -2894,12 +2777,12 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                                 break;
 
                             if (ConvertMoney(authorization.Amount) >= Math.Round(nopOrder.OrderTotal, 2))
-                                await _orderProcessingService.MarkAsAuthorizedAsync(nopOrder);
+                                _orderProcessingService.MarkAsAuthorized(nopOrder);
 
                             break;
 
                         case AuthorizationStatusType.DENIED:
-                            await _orderService.InsertOrderNoteAsync(new()
+                            _orderService.InsertOrderNote(new OrderNote
                             {
                                 OrderId = nopOrder.Id,
                                 Note = "Cannot authorize funds for this authorized payment",
@@ -2919,8 +2802,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 }
 
                 //capture actions
-                var capture = webhookResource as Capture;
-                if (capture is not null && Enum.TryParse<CaptureStatusType>(capture.Status, true, out var captureStatus))
+                if (webhookResource is Capture capture && Enum.TryParse<CaptureStatusType>(capture.Status, true, out var captureStatus))
                 {
                     nopOrder.CaptureTransactionId = capture.Id;
                     nopOrder.CaptureTransactionResult = capture.Status;
@@ -2929,7 +2811,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     {
                         case CaptureStatusType.PENDING:
                             nopOrder.PaymentStatus = PaymentStatus.Pending;
-                            await _orderProcessingService.CheckOrderStatusAsync(nopOrder);
+                            _orderProcessingService.CheckOrderStatus(nopOrder);
 
                             break;
 
@@ -2938,13 +2820,13 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                                 break;
 
                             if (ConvertMoney(capture.Amount) >= Math.Round(nopOrder.OrderTotal, 2))
-                                await _orderProcessingService.MarkOrderAsPaidAsync(nopOrder);
+                                _orderProcessingService.MarkOrderAsPaid(nopOrder);
 
                             break;
 
                         case CaptureStatusType.DECLINED:
                         case CaptureStatusType.FAILED:
-                            await _orderService.InsertOrderNoteAsync(new()
+                            _orderService.InsertOrderNote(new OrderNote
                             {
                                 OrderId = nopOrder.Id,
                                 Note = "The funds could not be captured",
@@ -2964,14 +2846,13 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 }
 
                 //refund actions
-                var refund = webhookResource as Refund;
-                if (refund is not null && Enum.TryParse<RefundStatusType>(refund.Status, true, out var refundStatus))
+                if (webhookResource is Refund refund && Enum.TryParse<RefundStatusType>(refund.Status, true, out var refundStatus))
                 {
                     switch (refundStatus)
                     {
                         case RefundStatusType.CANCELLED:
                         case RefundStatusType.FAILED:
-                            await _orderService.InsertOrderNoteAsync(new()
+                            _orderService.InsertOrderNote(new OrderNote
                             {
                                 OrderId = nopOrder.Id,
                                 Note = "The refund could not be processed or was cancelled",
@@ -2982,9 +2863,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                             break;
 
                         case RefundStatusType.COMPLETED:
-                            var refundIds = await _genericAttributeService
-                                .GetAttributeAsync<List<string>>(nopOrder, PayPalCommerceDefaults.RefundIdAttributeName)
-                                ?? new();
+                            var refundIds = _genericAttributeService
+                                .GetAttribute<List<string>>(nopOrder, PayPalCommerceDefaults.RefundIdAttributeName)
+                                ?? new List<string>();
                             if (refundIds.Contains(refund.Id))
                                 break;
 
@@ -2994,10 +2875,10 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                             if (!_orderProcessingService.CanPartiallyRefundOffline(nopOrder, refundedAmount))
                                 break;
 
-                            await _orderProcessingService.PartiallyRefundOfflineAsync(nopOrder, refundedAmount);
+                            _orderProcessingService.PartiallyRefundOffline(nopOrder, refundedAmount);
 
                             refundIds.Add(refund.Id);
-                            await _genericAttributeService.SaveAttributeAsync(nopOrder, PayPalCommerceDefaults.RefundIdAttributeName, refundIds);
+                            _genericAttributeService.SaveAttribute(nopOrder, PayPalCommerceDefaults.RefundIdAttributeName, refundIds);
 
                             break;
 
@@ -3010,13 +2891,13 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 }
 
                 //order actions
-                var order = webhookResource as Order;
-                if (order is not null && Enum.TryParse<OrderStatusType>(order.Status, true, out var orderStatus))
+                if (webhookResource is Order order && Enum.TryParse<OrderStatusType>(order.Status, true, out var orderStatus))
                 {
                     switch (orderStatus)
                     {
                         case OrderStatusType.COMPLETED:
-                            if (order.PurchaseUnits.FirstOrDefault().Payments?.Captures?.FirstOrDefault() is not Capture orderCapture)
+                            var orderCapture = order.PurchaseUnits.FirstOrDefault().Payments?.Captures?.FirstOrDefault();
+                            if (orderCapture is null)
                                 break;
 
                             if (orderCapture.Status?.ToUpper() != CaptureStatusType.COMPLETED.ToString())
@@ -3029,13 +2910,13 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                             nopOrder.CaptureTransactionResult = orderCapture.Status;
 
                             if (ConvertMoney(orderCapture.Amount) >= Math.Round(nopOrder.OrderTotal, 2))
-                                await _orderProcessingService.MarkOrderAsPaidAsync(nopOrder);
+                                _orderProcessingService.MarkOrderAsPaid(nopOrder);
 
                             break;
                     }
                 }
 
-                await _orderService.UpdateOrderAsync(nopOrder);
+                _orderService.UpdateOrder(nopOrder);
 
                 return true;
             });
@@ -3049,21 +2930,18 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// Prepare URL to sign up a merchant
         /// </summary>
         /// <param name="merchantGuid">Merchant internal id</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the URL to sign up; error message if exists
-        /// </returns>
-        public async Task<((string SandboxUrl, string LiveUrl), string Error)> PrepareSignUpUrlAsync(string merchantGuid)
+        /// <returns>The URL to sign up; error message if exists</returns>
+        public ((string SandboxUrl, string LiveUrl), string Error) PrepareSignUpUrl(string merchantGuid)
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
                 if (string.IsNullOrEmpty(merchantGuid))
                     throw new NopException("Merchant internal id is not set");
 
-                var storeId = await _storeContext.GetActiveStoreScopeConfigurationAsync();
+                var storeId = _storeContext.ActiveStoreScopeConfiguration;
                 var store = storeId > 0
-                    ? await _storeService.GetStoreByIdAsync(storeId)
-                    : await _storeContext.GetCurrentStoreAsync();
+                    ? _storeService.GetStoreById(storeId)
+                    : _storeContext.CurrentStore;
                 var urlHelper = _urlHelperFactory.GetUrlHelper(_actionContextAccessor.ActionContext);
                 var returnUrl = $"{store.Url.TrimEnd('/')}" +
                     $"{urlHelper.RouteUrl(PayPalCommerceDefaults.Route.OnboardingCallback, new { storeId = storeId })}";
@@ -3110,13 +2988,10 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// <param name="settings">Plugin settings</param>
         /// <param name="authCode">Authentication parameters</param>
         /// <param name="sharedId">Authentication parameters</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the REST API application credentials; error message if exists
-        /// </returns>
-        public async Task<(Credentials Credentials, string Error)> SignUpAsync(PayPalCommerceSettings settings, string authCode, string sharedId)
+        /// <returns>The REST API application credentials; error message if exists</returns>
+        public (Credentials Credentials, string Error) SignUp(PayPalCommerceSettings settings, string authCode, string sharedId)
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
                 if (string.IsNullOrEmpty(settings.MerchantGuid))
                     throw new NopException("Merchant internal id is not set");
@@ -3133,7 +3008,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     ClientId = sharedId,
                     Secret = string.Empty
                 };
-                var accessToken = await _httpClient.RequestAsync<GetAccessTokenRequest, GetAccessTokenResponse>(accessTokenRequest, settings);
+                var accessToken = _httpClient.Request<GetAccessTokenRequest, GetAccessTokenResponse>(accessTokenRequest, settings);
 
                 //and change it to the credentials
                 var credentialsRequest = new GetCredentialsRequest
@@ -3141,7 +3016,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     Id = settings.UseSandbox ? PayPalCommerceDefaults.Onboarding.Id.Sandbox : PayPalCommerceDefaults.Onboarding.Id.Live,
                     AccessToken = accessToken?.Token
                 };
-                var credentials = await _httpClient.RequestAsync<GetCredentialsRequest, GetCredentialsResponse>(credentialsRequest, settings);
+                var credentials = _httpClient.Request<GetCredentialsRequest, GetCredentialsResponse>(credentialsRequest, settings);
 
                 return credentials;
             });
@@ -3151,13 +3026,10 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// Get the merchant details
         /// </summary>
         /// <param name="settings">Plugin settings</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the merchant details; error message if exists
-        /// </returns>
-        public async Task<(Merchant Merchant, string Error)> GetMerchantAsync(PayPalCommerceSettings settings)
+        /// <returns>The merchant details; error message if exists</returns>
+        public (Merchant Merchant, string Error) GetMerchant(PayPalCommerceSettings settings)
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
                 if (string.IsNullOrEmpty(settings.MerchantGuid))
                     throw new NopException("Merchant internal id is not set");
@@ -3172,7 +3044,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     MerchantId = settings.MerchantId
                 };
 
-                var merchant = await _httpClient.RequestAsync<GetMerchantRequest, GetMerchantResponse>(request, settings);
+                var merchant = _httpClient.Request<GetMerchantRequest, GetMerchantResponse>(request, settings);
 
                 //check capabilities statuses
                 var ppcpStatus = merchant.Products
@@ -3208,7 +3080,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     merchant.AdvancedCards.Active &&
                     cardsCapability?.Limits?.FirstOrDefault()?.Type?.ToUpper() == "GENERAL";
                 var belowLimit = inLimit && withdrawCapability?.Limits is null && sendMoneyCapability?.Limits is null;
-                var overLimit = inLimit && withdrawCapability?.Limits is not null && sendMoneyCapability?.Limits is not null;
+                var overLimit = inLimit && withdrawCapability?.Limits != null && sendMoneyCapability?.Limits != null;
 
                 merchant.AdvancedCardsDetails = (review, needMoreData, belowLimit, overLimit, denied);
 
@@ -3229,55 +3101,52 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// <param name="withDetails">Whether to load additional details of payment tokens</param>
         /// <param name="deleteTokenId">Identifier of the token to delete</param>
         /// <param name="defaultTokenId">Identifier of the token to mark as default</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the list of payment tokens; error message if exists
-        /// </returns>
-        public async Task<(List<PayPalToken> PaymentTokens, string Error)>
-            GetPaymentTokensAsync(PayPalCommerceSettings settings, bool withDetails = false, int? deleteTokenId = null, int? defaultTokenId = null)
+        /// <returns>The list of payment tokens; error message if exists</returns>
+        public (List<PayPalToken> PaymentTokens, string Error)
+            GetPaymentTokens(PayPalCommerceSettings settings, bool withDetails = false, int? deleteTokenId = null, int? defaultTokenId = null)
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
                 //only registered customers can save payment tokens
-                var customer = await _workContext.GetCurrentCustomerAsync();
-                if (await _customerService.IsGuestAsync(customer))
+                var customer = _workContext.CurrentCustomer;
+                if (_customerService.IsGuest(customer))
                     return new List<PayPalToken>();
 
                 //try to delete token
-                if (deleteTokenId is not null)
+                if (deleteTokenId != null)
                 {
-                    var deleteToken = await _tokenService.GetByIdAsync(deleteTokenId.Value)
+                    var deleteToken = _tokenService.GetById(deleteTokenId.Value)
                         ?? throw new NopException("No payment token found with the specified id");
 
                     if (deleteToken.CustomerId != customer.Id)
                         throw new NopException("You cannot delete this token");
 
-                    await _tokenService.DeleteAsync(deleteToken);
-                    await _httpClient.RequestAsync<DeletePaymentTokenRequest, EmptyResponse>(new() { Id = deleteToken.VaultId }, settings);
+                    _tokenService.Delete(deleteToken);
+                    _httpClient.Request<DeletePaymentTokenRequest, EmptyResponse>(new DeletePaymentTokenRequest { Id = deleteToken.VaultId }, settings);
                 }
 
                 //try to mark token as default
-                if (defaultTokenId is not null)
+                if (defaultTokenId != null)
                 {
-                    var defaultToken = await _tokenService.GetByIdAsync(defaultTokenId.Value)
+                    var defaultToken = _tokenService.GetById(defaultTokenId.Value)
                         ?? throw new NopException("No payment token found with the specified id");
 
                     if (defaultToken.CustomerId != customer.Id)
                         throw new NopException("You cannot edit this token");
 
                     defaultToken.IsPrimaryMethod = true;
-                    await _tokenService.UpdateAsync(defaultToken);
+                    _tokenService.Update(defaultToken);
 
-                    var tokensToUpdate = (await _tokenService.GetAllTokensAsync(settings.ClientId, customer.Id))
+                    var tokensToUpdate = _tokenService.GetAllTokens(settings.ClientId, customer.Id)
                         .Where(token => token.Id != defaultToken.Id && token.IsPrimaryMethod);
                     foreach (var token in tokensToUpdate)
                     {
                         token.IsPrimaryMethod = false;
-                        await _tokenService.UpdateAsync(token);
+                        _tokenService.Update(token);
                     }
                 }
 
-                var tokens = await _tokenService.GetAllTokensAsync(settings.ClientId, customer.Id);
+                var tokens = _tokenService.GetAllTokens(settings.ClientId, customer.Id);
                 if (!tokens.Any())
                     return new List<PayPalToken>();
 
@@ -3285,7 +3154,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     return tokens.ToList();
 
                 //load additional details
-                return await PreparePaymentTokensAsync(settings, tokens);
+                return PreparePaymentTokens(settings, tokens);
             });
         }
 
@@ -3294,20 +3163,17 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// </summary>
         /// <param name="settings">Plugin settings</param>
         /// <param name="customerId">Customer id</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the delete result; error message if exists
-        /// </returns>
-        public async Task<(bool Result, string Error)> DeletePaymentTokensAsync(PayPalCommerceSettings settings, int customerId)
+        /// <returns>The delete result; error message if exists</returns>
+        public (bool Result, string Error) DeletePaymentTokens(PayPalCommerceSettings settings, int customerId)
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
-                var tokens = await _tokenService.GetAllTokensAsync(settings.ClientId, customerId);
-                await _tokenService.DeleteAsync(tokens);
+                var tokens = _tokenService.GetAllTokens(settings.ClientId, customerId);
+                _tokenService.Delete(tokens);
                 foreach (var token in tokens)
                 {
                     try
-                    { await _httpClient.RequestAsync<DeletePaymentTokenRequest, EmptyResponse>(new() { Id = token.VaultId }, settings); }
+                    { _httpClient.Request<DeletePaymentTokenRequest, EmptyResponse>(new DeletePaymentTokenRequest { Id = token.VaultId }, settings); }
                     catch { }
                 }
 
@@ -3320,25 +3186,22 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// </summary>
         /// <param name="settings">Plugin settings</param>
         /// <param name="placement">Button placement</param>
-        /// <returns>
-        /// A task that represents the asynchronous operation
-        /// The task result contains the list of payment tokens; error message if exists
-        /// </returns>
-        public async Task<(List<PayPalToken> PaymentTokens, string Error)> GetSavedCardsAsync(PayPalCommerceSettings settings, ButtonPlacement placement)
+        /// <returns>The list of payment tokens; error message if exists</returns>
+        public (List<PayPalToken> PaymentTokens, string Error) GetSavedCards(PayPalCommerceSettings settings, ButtonPlacement placement)
         {
-            return await HandleFunctionAsync(async () =>
+            return HandleFunction(() =>
             {
                 if (placement != ButtonPlacement.PaymentMethod || !settings.UseCardFields || !settings.UseVault)
                     return null;
 
-                var customer = await _workContext.GetCurrentCustomerAsync();
-                if (await _customerService.IsGuestAsync(customer))
+                var customer = _workContext.CurrentCustomer;
+                if (_customerService.IsGuest(customer))
                     return null;
 
                 //get cards only
-                var tokens = await _tokenService.GetAllTokensAsync(settings.ClientId, customer.Id, type: nameof(PaymentSource.Card));
+                var tokens = _tokenService.GetAllTokens(settings.ClientId, customer.Id, type: nameof(PaymentSource.Card));
 
-                return await PreparePaymentTokensAsync(settings, tokens);
+                return PreparePaymentTokens(settings, tokens);
             });
         }
 
@@ -3373,7 +3236,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             /// <summary>
             /// Gets or sets the customer's shopping cart
             /// </summary>
-            public List<ShoppingCartItem> Cart { get; set; } = new();
+            public List<ShoppingCartItem> Cart { get; set; } = new List<ShoppingCartItem>();
 
             /// <summary>
             /// Gets or sets the primary store currency code

@@ -5,7 +5,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Models.Admin
     /// <summary>
     /// Represents the Pay Later configuration model
     /// </summary>
-    public record PayLaterConfigurationModel : BaseNopModel
+    public class PayLaterConfigurationModel : BaseNopModel
     {
         public string ClientId { get; set; }
 

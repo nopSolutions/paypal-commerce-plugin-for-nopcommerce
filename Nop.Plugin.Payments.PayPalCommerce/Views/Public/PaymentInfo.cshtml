@@ -2,9 +2,25 @@
     Layout = "";
 }
 
-<script asp-location="Footer">
-    $(document).ready(function () {
-        $('button.payment-info-next-step-button').hide();
-        window.location = '@(Url.RouteUrl(PayPalCommerceDefaults.Route.PaymentInfo))';
-    });
-</script>
+@if (!orderSettings.OnePageCheckoutEnabled)
+{
+    <text>
+        <script asp-location="Footer">
+            $(document).ready(function () {
+                $('input.payment-info-next-step-button').hide();
+                window.location = '@(Url.RouteUrl(PayPalCommerceDefaults.Route.PaymentInfo))';
+            });
+        </script>
+    </text>
+}
+else
+{
+    <text>
+        <script>
+            $(document).ready(function () {
+                $('input.payment-info-next-step-button').hide();
+                window.location = '@(Url.RouteUrl(PayPalCommerceDefaults.Route.PaymentInfo))';
+            });
+        </script>
+    </text>
+}
