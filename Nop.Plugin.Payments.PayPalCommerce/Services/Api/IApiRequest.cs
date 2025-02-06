@@ -8,11 +8,11 @@
         /// <summary>
         /// Gets the request path
         /// </summary>
-        public string Path { get; }
+        string Path { get; }
 
         /// <summary>
         /// Gets the request method
         /// </summary>
-        public string Method { get; }
+        string Method { get; }
     }
 }

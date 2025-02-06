@@ -1,5 +1,5 @@
 ﻿using System;
-using Microsoft.AspNetCore.Http;
+using System.Linq;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Nop.Plugin.Payments.PayPalCommerce.Domain;
@@ -51,17 +51,17 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Components.Public
             if (!active)
                 return Content(string.Empty);
 
-            if (!widgetZone.Equals(PublicWidgetZones.OrderSummaryTotals))
+            if (!widgetZone.Equals(PublicWidgetZones.OrderSummaryContentAfter))
                 return Content(string.Empty);
 
             if (!_settings.UseSandbox && !_settings.ConfiguratorSupported)
                 return Content(string.Empty);
 
             //get messages placement
-            var routeName = HttpContext.GetEndpoint()?.Metadata.GetMetadata<RouteNameMetadata>()?.RouteName;
-            var isCartPage = routeName == PayPalCommerceDefaults.Route.ShoppingCart;
-            var isPaymentMethodPage = routeName == PayPalCommerceDefaults.Route.PaymentInfo;
-            var isCheckoutPage = (HttpContext.Request.RouteValues?.TryGetValue("controller", out var controller) ?? false) &&
+            var routeNames = RouteData.Routers.OfType<INamedRouter>();
+            var isCartPage = routeNames.Any(routeName => routeName.Name == PayPalCommerceDefaults.Route.ShoppingCart);
+            var isPaymentMethodPage = routeNames.Any(routeName => routeName.Name == PayPalCommerceDefaults.Route.PaymentInfo);
+            var isCheckoutPage = (RouteData.Values?.TryGetValue("controller", out var controller) ?? false) &&
                 string.Equals(controller.ToString(), "Checkout", StringComparison.InvariantCultureIgnoreCase);
             if (!isCartPage && !isPaymentMethodPage && !isCheckoutPage)
                 return Content(string.Empty);

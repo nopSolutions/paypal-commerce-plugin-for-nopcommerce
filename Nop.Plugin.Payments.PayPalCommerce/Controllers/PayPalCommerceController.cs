@@ -74,7 +74,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         /// <returns>The plugin settings; store id</returns>
         private (PayPalCommerceSettings Settings, int StoreId) LoadSettings(int? storeId = null)
         {
-            storeId ??= _storeContext.ActiveStoreScopeConfiguration;
+            if (storeId is null)
+                storeId = _storeContext.ActiveStoreScopeConfiguration;
+
             var settings = _settingService.LoadSetting<PayPalCommerceSettings>(storeId ?? 0);
 
             //we don't need some of the shared settings that loaded above, so load them separately for the chosen store

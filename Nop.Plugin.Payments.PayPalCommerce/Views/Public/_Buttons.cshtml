@@ -9,13 +9,19 @@
     var paypalGooglePayContainer = "paypal-googlepay-container";
     var paypalMessagesContainer = "paypal-messages-container";
 
-    var pageType = Model.Placement switch
+    var pageType = string.Empty;
+    switch (Model.Placement)
     {
-        ButtonPlacement.Cart => "cart",
-        ButtonPlacement.Product => "product-details",
-        ButtonPlacement.PaymentMethod => "checkout",
-        _ => null
-    };
+        case ButtonPlacement.Cart:
+            pageType = "cart";
+            break;
+        case ButtonPlacement.Product:
+            pageType = "product-details";
+            break;
+        case ButtonPlacement.PaymentMethod:
+            pageType = "checkout";
+            break;
+    }
 }
 
 <link rel="stylesheet" href="~/Plugins/Payments.PayPalCommerce/Content/styles.css" />

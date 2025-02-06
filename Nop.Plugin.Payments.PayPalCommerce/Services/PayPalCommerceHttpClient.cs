@@ -108,13 +108,11 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             catch { }
 
             //add authorization and some custom headers
-            var authorization = request switch
-            {
-                GetCredentialsRequest credentialsRequest => $"Bearer {credentialsRequest.AccessToken}",
-                GetAccessTokenRequest tokenRequest =>
-                    $"Basic {Convert.ToBase64String(Encoding.Default.GetBytes($"{tokenRequest.ClientId}:{tokenRequest.Secret}"))}",
-                _ => null
-            };
+            var authorization = string.Empty;
+            if (request is GetCredentialsRequest credentialsRequest)
+                authorization = $"Bearer {credentialsRequest.AccessToken}";
+            if (request is GetAccessTokenRequest tokenRequest)
+                authorization = $"Basic {Convert.ToBase64String(Encoding.Default.GetBytes($"{tokenRequest.ClientId}:{tokenRequest.Secret}"))}";
             if (request is IAuthorizedRequest)
                 authorization = $"Bearer {GetAccessToken(settings)}";
             if (!string.IsNullOrEmpty(authorization))
@@ -135,7 +133,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 if (typeof(TResponse) == typeof(EmptyResponse))
                     return default;
 
-                return JsonConvert.DeserializeObject<TResponse>(responseString ?? string.Empty) ?? default;
+                return JsonConvert.DeserializeObject<TResponse>(responseString ?? string.Empty);
             }
 
             //failed request processing

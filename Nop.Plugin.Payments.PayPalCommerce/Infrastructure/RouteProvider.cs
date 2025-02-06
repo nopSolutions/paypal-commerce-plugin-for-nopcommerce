@@ -1,11 +1,7 @@
-﻿using System.Linq;
-using Microsoft.AspNetCore.Builder;
+﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.DependencyInjection;
-using Nop.Core.Domain.Localization;
-using Nop.Data;
-using Nop.Services.Localization;
 using Nop.Web.Framework;
+using Nop.Web.Framework.Localization;
 using Nop.Web.Framework.Mvc.Routing;
 
 namespace Nop.Plugin.Payments.PayPalCommerce.Infrastructure
@@ -18,42 +14,31 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Infrastructure
         /// <summary>
         /// Register routes
         /// </summary>
-        /// <param name="endpointRouteBuilder">Route builder</param>
-        public void RegisterRoutes(IEndpointRouteBuilder endpointRouteBuilder)
+        /// <param name="routeBuilder">Route builder</param>
+        public void RegisterRoutes(IRouteBuilder routeBuilder)
         {
-            var lang = string.Empty;
-            if (DataSettingsManager.DatabaseIsInstalled)
-            {
-                var localizationSettings = endpointRouteBuilder.ServiceProvider.GetRequiredService<LocalizationSettings>();
-                if (localizationSettings.SeoFriendlyUrlsForLanguagesEnabled)
-                {
-                    var langservice = endpointRouteBuilder.ServiceProvider.GetRequiredService<ILanguageService>();
-                    var languages = langservice.GetAllLanguages().ToList();
-                    lang = "{language:lang=" + languages.FirstOrDefault().UniqueSeoCode + "}";
-                }
-            }
-            endpointRouteBuilder.MapControllerRoute(name: PayPalCommerceDefaults.Route.Configuration,
-                pattern: "Admin/PayPalCommerce/Configure",
+            routeBuilder.MapRoute(name: PayPalCommerceDefaults.Route.Configuration,
+                template: "Admin/PayPalCommerce/Configure",
                 defaults: new { controller = "PayPalCommerce", action = "Configure", area = AreaNames.Admin });
 
-            endpointRouteBuilder.MapControllerRoute(name: PayPalCommerceDefaults.Route.OnboardingCallback,
-                pattern: "Admin/PayPalCommerce/Onboarding/{storeId:int}",
+            routeBuilder.MapRoute(name: PayPalCommerceDefaults.Route.OnboardingCallback,
+                template: "Admin/PayPalCommerce/Onboarding/{storeId:int}",
                 defaults: new { controller = "PayPalCommerce", action = "OnboardingCallback", area = AreaNames.Admin });
 
-            endpointRouteBuilder.MapControllerRoute(name: PayPalCommerceDefaults.Route.Webhook,
-                pattern: "Plugins/PayPalCommerce/Webhook",
+            routeBuilder.MapRoute(name: PayPalCommerceDefaults.Route.Webhook,
+                template: "Plugins/PayPalCommerce/Webhook",
                 defaults: new { controller = "PayPalCommerceWebhook", action = "WebhookHandler" });
 
-            endpointRouteBuilder.MapControllerRoute(name: PayPalCommerceDefaults.Route.PaymentInfo,
-                pattern: $"{lang}/paypal/payment-info",
+            routeBuilder.MapLocalizedRoute(name: PayPalCommerceDefaults.Route.PaymentInfo,
+                template: $"paypal/payment-info",
                 defaults: new { controller = "PayPalCommercePublic", action = "PluginPaymentInfo" });
 
-            endpointRouteBuilder.MapControllerRoute(name: PayPalCommerceDefaults.Route.ConfirmOrder,
-                pattern: $"{lang}/paypal/confirm-order",
+            routeBuilder.MapLocalizedRoute(name: PayPalCommerceDefaults.Route.ConfirmOrder,
+                template: $"paypal/confirm-order",
                 defaults: new { controller = "PayPalCommercePublic", action = "ConfirmOrder" });
 
-            endpointRouteBuilder.MapControllerRoute(name: PayPalCommerceDefaults.Route.PaymentTokens,
-                pattern: $"{lang}/customer/paypal-payment-methods",
+            routeBuilder.MapLocalizedRoute(name: PayPalCommerceDefaults.Route.PaymentTokens,
+                template: $"customer/paypal-payment-methods",
                 defaults: new { controller = "PayPalCommercePublic", action = "PaymentTokens" });
 
         }

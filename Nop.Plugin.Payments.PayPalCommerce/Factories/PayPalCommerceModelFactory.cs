@@ -298,13 +298,13 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Factories
             //function to prepare items
             (string Type, string Price, string Status, string Label) prepareItem(string type, string value, string resourcePostfix)
             {
-                if (!decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount) || amount <= decimal.Zero)
+                if (!decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var tmpAmount) || tmpAmount <= decimal.Zero)
                     return default;
 
                 if (resourcePostfix == "Discount")
-                    amount = -amount;
+                    tmpAmount = -tmpAmount;
 
-                var price = amount.ToString("0.00", CultureInfo.InvariantCulture);
+                var price = tmpAmount.ToString("0.00", CultureInfo.InvariantCulture);
                 var status = "final";
                 var label = type == "TOTAL"
                     ? storeName
@@ -392,13 +392,13 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Factories
             //function to prepare items
             (string Type, string Price, string Status, string Label) prepareItem(string type, string value, string resourcePostfix)
             {
-                if (!decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount) || amount <= decimal.Zero)
+                if (!decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var tmpAmount) || tmpAmount <= decimal.Zero)
                     return default;
 
                 if (resourcePostfix == "Discount")
-                    amount = -amount;
+                    tmpAmount = -tmpAmount;
 
-                var price = amount.ToString("0.00", CultureInfo.InvariantCulture);
+                var price = tmpAmount.ToString("0.00", CultureInfo.InvariantCulture);
                 var status = !shippingIsRequired || shippingIsSet ? "FINAL" : (type == "TOTAL" ? "ESTIMATED" : "PENDING");
                 var label = _localizationService.GetResource($"Plugins.Payments.PayPalCommerce.GooglePay.{resourcePostfix}");
                 return (type, price, status, label);

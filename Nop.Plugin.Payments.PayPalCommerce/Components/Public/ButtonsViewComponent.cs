@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using System.Linq;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Nop.Plugin.Payments.PayPalCommerce.Domain;
@@ -71,8 +71,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Components.Public
             {
                 if (_settings.DisplayButtonsOnShoppingCart)
                 {
-                    var routeName = HttpContext.GetEndpoint()?.Metadata.GetMetadata<RouteNameMetadata>()?.RouteName;
-                    if (routeName == PayPalCommerceDefaults.Route.ShoppingCart)
+                    var routeNames = RouteData.Routers.OfType<INamedRouter>();
+                    if (routeNames.Any(routeName => routeName.Name == PayPalCommerceDefaults.Route.ShoppingCart))
                         model = _modelFactory.PreparePaymentInfoModel(ButtonPlacement.Cart);
                 }
             }

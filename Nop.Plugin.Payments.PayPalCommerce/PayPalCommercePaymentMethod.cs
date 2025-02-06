@@ -10,6 +10,7 @@ using Nop.Core;
 using Nop.Core.Domain.Cms;
 using Nop.Core.Domain.Orders;
 using Nop.Core.Domain.Payments;
+using Nop.Plugin.Payments.PayPalCommerce.Data;
 using Nop.Plugin.Payments.PayPalCommerce.Domain;
 using Nop.Plugin.Payments.PayPalCommerce.Services;
 using Nop.Services.Cms;
@@ -40,6 +41,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce
         private readonly IUrlHelperFactory _urlHelperFactory;
         private readonly IWorkContext _workContext;
         private readonly PaymentSettings _paymentSettings;
+        private readonly PayPalTokenObjectContext _objectContext;
         private readonly PayPalCommerceServiceManager _serviceManager;
         private readonly PayPalCommerceSettings _settings;
         private readonly WidgetSettings _widgetSettings;
@@ -56,6 +58,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce
             IUrlHelperFactory urlHelperFactory,
             IWorkContext workContext,
             PaymentSettings paymentSettings,
+            PayPalTokenObjectContext objectContext,
             PayPalCommerceServiceManager serviceManager,
             PayPalCommerceSettings settings,
             WidgetSettings widgetSettings)
@@ -68,6 +71,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce
             _urlHelperFactory = urlHelperFactory;
             _workContext = workContext;
             _paymentSettings = paymentSettings;
+            _objectContext = objectContext;
             _serviceManager = serviceManager;
             _settings = settings;
             _widgetSettings = widgetSettings;
@@ -251,7 +255,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce
                 PublicWidgetZones.OrderSummaryContentBefore,
                 PublicWidgetZones.HeaderLinksBefore,
                 PublicWidgetZones.Footer,
-                PublicWidgetZones.OrderSummaryTotals,
+                PublicWidgetZones.OrderSummaryContentAfter,
                 AdminWidgetZones.OrderShipmentDetailsButtons,
                 AdminWidgetZones.OrderShipmentAddButtons,
                 AdminWidgetZones.PaymentMethodListTop
@@ -274,7 +278,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce
             if (widgetZone.Equals(PublicWidgetZones.HeaderLinksBefore) || widgetZone.Equals(PublicWidgetZones.Footer))
                 return PayPalCommerceDefaults.LOGO_VIEW_COMPONENT_NAME;
 
-            if (widgetZone.Equals(PublicWidgetZones.OrderSummaryTotals))
+            if (widgetZone.Equals(PublicWidgetZones.OrderSummaryContentAfter))
                 return PayPalCommerceDefaults.MESSAGES_VIEW_COMPONENT_NAME;
 
             if (widgetZone.Equals(AdminWidgetZones.OrderShipmentDetailsButtons) || widgetZone.Equals(AdminWidgetZones.OrderShipmentAddButtons))
@@ -345,6 +349,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce
         /// </summary>
         public override void Install()
         {
+            _objectContext.Install();
+
             _settingService.SaveSetting(new PayPalCommerceSettings
             {
                 SetCredentialsManually = false,
@@ -400,114 +406,111 @@ namespace Nop.Plugin.Payments.PayPalCommerce
                 _settingService.SaveSetting(_widgetSettings);
             }
 
-            _localizationService.AddPluginLocaleResource(new Dictionary<string, string>
-            {
-                ["Enums.Nop.Plugin.Payments.PayPalCommerce.Domain.ButtonPlacement.Cart"] = "Shopping cart",
-                ["Enums.Nop.Plugin.Payments.PayPalCommerce.Domain.ButtonPlacement.Product"] = "Product",
-                ["Enums.Nop.Plugin.Payments.PayPalCommerce.Domain.ButtonPlacement.PaymentMethod"] = "Checkout",
-                ["Enums.Nop.Plugin.Payments.PayPalCommerce.Domain.PaymentType.Authorize"] = "Authorize",
-                ["Enums.Nop.Plugin.Payments.PayPalCommerce.Domain.PaymentType.Capture"] = "Capture",
+            _localizationService.AddOrUpdatePluginLocaleResource("Enums.Nop.Plugin.Payments.PayPalCommerce.Domain.ButtonPlacement.Cart", "Shopping cart");
+            _localizationService.AddOrUpdatePluginLocaleResource("Enums.Nop.Plugin.Payments.PayPalCommerce.Domain.ButtonPlacement.Product", "Product");
+            _localizationService.AddOrUpdatePluginLocaleResource("Enums.Nop.Plugin.Payments.PayPalCommerce.Domain.ButtonPlacement.PaymentMethod", "Checkout");
+            _localizationService.AddOrUpdatePluginLocaleResource("Enums.Nop.Plugin.Payments.PayPalCommerce.Domain.PaymentType.Authorize", "Authorize");
+            _localizationService.AddOrUpdatePluginLocaleResource("Enums.Nop.Plugin.Payments.PayPalCommerce.Domain.PaymentType.Capture", "Capture");
 
-                ["Plugins.Payments.PayPalCommerce.ApplePay.Discount"] = "Discount",
-                ["Plugins.Payments.PayPalCommerce.ApplePay.Shipping"] = "Shipping",
-                ["Plugins.Payments.PayPalCommerce.ApplePay.Subtotal"] = "Subtotal",
-                ["Plugins.Payments.PayPalCommerce.ApplePay.Tax"] = "Tax",
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.ApplePay.Discount", "Discount");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.ApplePay.Shipping", "Shipping");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.ApplePay.Subtotal", "Subtotal");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.ApplePay.Tax", "Tax");
 
-                ["Plugins.Payments.PayPalCommerce.Card.Button"] = "Pay now with Card",
-                ["Plugins.Payments.PayPalCommerce.Card.New"] = "Pay by new card",
-                ["Plugins.Payments.PayPalCommerce.Card.Prefix"] = "Pay by",
-                ["Plugins.Payments.PayPalCommerce.Card.Save"] = "Save your card",
-                ["Plugins.Payments.PayPalCommerce.Configuration"] = "Configuration",
-                ["Plugins.Payments.PayPalCommerce.Configuration.Error"] = "Error: {0} (see details in the <a href=\"{1}\" target=\"_blank\">log</a>)",
-                ["Plugins.Payments.PayPalCommerce.Credentials.Valid"] = "The specified credentials are valid",
-                ["Plugins.Payments.PayPalCommerce.Credentials.Invalid"] = "The specified credentials are invalid",
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Card.Button", "Pay now with Card");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Card.New", "Pay by new card");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Card.Prefix", "Pay by");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Card.Save", "Save your card");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Configuration", "Configuration");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Configuration.Error", "Error: {0} (see details in the <a href=\"{1}\" target=\"_blank\">log</a>)");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Credentials.Valid", "The specified credentials are valid");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Credentials.Invalid", "The specified credentials are invalid");
 
-                ["Plugins.Payments.PayPalCommerce.Fields.ClientId"] = "Client ID",
-                ["Plugins.Payments.PayPalCommerce.Fields.ClientId.Hint"] = "Enter your PayPal REST API client ID. This identifies your PayPal account and determines where transactions are paid.",
-                ["Plugins.Payments.PayPalCommerce.Fields.ClientId.Required"] = "Client ID is required",
-                ["Plugins.Payments.PayPalCommerce.Fields.CustomerAuthenticationRequired"] = "Use 3D Secure",
-                ["Plugins.Payments.PayPalCommerce.Fields.CustomerAuthenticationRequired.Hint"] = "3D Secure enables you to authenticate card holders through card issuers. It reduces the likelihood of fraud when you use supported cards and improves transaction performance. A successful 3D Secure authentication can shift liability for chargebacks due to fraud from you to the card issuer.",
-                ["Plugins.Payments.PayPalCommerce.Fields.DisplayButtonsOnProductDetails"] = "Display buttons on product details",
-                ["Plugins.Payments.PayPalCommerce.Fields.DisplayButtonsOnProductDetails.Hint"] = "Determine whether to display PayPal buttons on product details pages (simple products only) allowing buyers to complete a purchase without going through the full checkout process.",
-                ["Plugins.Payments.PayPalCommerce.Fields.DisplayButtonsOnShoppingCart"] = "Display buttons on shopping cart",
-                ["Plugins.Payments.PayPalCommerce.Fields.DisplayButtonsOnShoppingCart.Hint"] = "Determine whether to display PayPal buttons on the shopping cart page in addition to the default checkout button.",
-                ["Plugins.Payments.PayPalCommerce.Fields.DisplayLogoInFooter"] = "Display logo in footer",
-                ["Plugins.Payments.PayPalCommerce.Fields.DisplayLogoInFooter.Hint"] = "Determine whether to display PayPal logo in the footer. These logos and banners are a great way to let your buyers know that you choose PayPal to securely process their payments.",
-                ["Plugins.Payments.PayPalCommerce.Fields.DisplayLogoInHeaderLinks"] = "Display logo in header links",
-                ["Plugins.Payments.PayPalCommerce.Fields.DisplayLogoInHeaderLinks.Hint"] = "Determine whether to display PayPal logo in header links. These logos and banners are a great way to let your buyers know that you choose PayPal to securely process their payments.",
-                ["Plugins.Payments.PayPalCommerce.Fields.LogoInFooter"] = "Logo source code",
-                ["Plugins.Payments.PayPalCommerce.Fields.LogoInFooter.Hint"] = "Enter source code of the logo. Find more logos and banners on PayPal Logo Center. You can also modify the code to fit correctly into your theme and site style.",
-                ["Plugins.Payments.PayPalCommerce.Fields.LogoInHeaderLinks"] = "Logo source code",
-                ["Plugins.Payments.PayPalCommerce.Fields.LogoInHeaderLinks.Hint"] = "Enter source code of the logo. Find more logos and banners on PayPal Logo Center. You can also modify the code to fit correctly into your theme and site style.",
-                ["Plugins.Payments.PayPalCommerce.Fields.MerchantId"] = "Merchant ID",
-                ["Plugins.Payments.PayPalCommerce.Fields.MerchantId.Hint"] = "PayPal account ID of the merchant.",
-                ["Plugins.Payments.PayPalCommerce.Fields.MerchantId.Required"] = "Merchant ID is required",
-                ["Plugins.Payments.PayPalCommerce.Fields.PaymentType"] = "Payment type",
-                ["Plugins.Payments.PayPalCommerce.Fields.PaymentType.Hint"] = "Choose a payment type to either capture payment immediately or authorize a payment for an order after order creation. Notice, that alternative payment methods don't work with the 'authorize and capture later' feature.",
-                ["Plugins.Payments.PayPalCommerce.Fields.SecretKey"] = "Secret",
-                ["Plugins.Payments.PayPalCommerce.Fields.SecretKey.Hint"] = "Enter your PayPal REST API secret.",
-                ["Plugins.Payments.PayPalCommerce.Fields.SecretKey.Required"] = "Secret is required",
-                ["Plugins.Payments.PayPalCommerce.Fields.SetCredentialsManually"] = "Specify API credentials manually",
-                ["Plugins.Payments.PayPalCommerce.Fields.SetCredentialsManually.Hint"] = "Determine whether to manually set the credentials (for example, there is already the REST API application created, or if you want to use the sandbox mode).",
-                ["Plugins.Payments.PayPalCommerce.Fields.SkipOrderConfirmPage"] = "Skip 'Confirm Order' page",
-                ["Plugins.Payments.PayPalCommerce.Fields.SkipOrderConfirmPage.Hint"] = "Determine whether to skip the 'Confirm Order' step during checkout so that after approving the payment on PayPal site, customers will redirected directly to the 'Order Completed' page.",
-                ["Plugins.Payments.PayPalCommerce.Fields.UseAlternativePayments"] = "Use Alternative Payments Methods",
-                ["Plugins.Payments.PayPalCommerce.Fields.UseAlternativePayments.Hint"] = "With alternative payment methods, customers across the globe can pay with their bank accounts, wallets, and other local payment methods.",
-                ["Plugins.Payments.PayPalCommerce.Fields.UseApplePay"] = "Use Apple Pay",
-                ["Plugins.Payments.PayPalCommerce.Fields.UseApplePay.Hint"] = "Apple Pay is a mobile payment and digital wallet service provided by Apple Inc.",
-                ["Plugins.Payments.PayPalCommerce.Fields.UseApplePay.Warning"] = "Don't forget to enable 'Serve unknown types of static files' on the <a href=\"{0}\" target=\"_blank\">App settings page</a>, so that the domain association file is processed correctly.",
-                ["Plugins.Payments.PayPalCommerce.Fields.UseCardFields"] = "Use Custom Card Fields",
-                ["Plugins.Payments.PayPalCommerce.Fields.UseCardFields.Hint"] = "Advanced Credit and Debit Card Payments (Custom Card Fields) are a PCI compliant solution to accept debit and credit card payments.",
-                ["Plugins.Payments.PayPalCommerce.Fields.UseGooglePay"] = "Use Google Pay",
-                ["Plugins.Payments.PayPalCommerce.Fields.UseGooglePay.Hint"] = "Google Pay is a mobile payment and digital wallet service provided by Alphabet Inc.",
-                ["Plugins.Payments.PayPalCommerce.Fields.UseSandbox"] = "Use sandbox",
-                ["Plugins.Payments.PayPalCommerce.Fields.UseSandbox.Hint"] = "Determine whether to use the sandbox environment for testing purposes.",
-                ["Plugins.Payments.PayPalCommerce.Fields.UseShipmentTracking"] = "Use shipment tracking",
-                ["Plugins.Payments.PayPalCommerce.Fields.UseShipmentTracking.Hint"] = "Determine whether to use the package tracking. It allows to automatically sync orders and shipment status with PayPal.",
-                ["Plugins.Payments.PayPalCommerce.Fields.UseVault"] = "Use Vault",
-                ["Plugins.Payments.PayPalCommerce.Fields.UseVault.Hint"] = "Determine whether to use PayPal Vault. It allows to store buyers payment information and use it in subsequent transactions.",
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.ClientId", "Client ID");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.ClientId.Hint", "Enter your PayPal REST API client ID. This identifies your PayPal account and determines where transactions are paid.");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.ClientId.Required", "Client ID is required");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.CustomerAuthenticationRequired", "Use 3D Secure");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.CustomerAuthenticationRequired.Hint", "3D Secure enables you to authenticate card holders through card issuers. It reduces the likelihood of fraud when you use supported cards and improves transaction performance. A successful 3D Secure authentication can shift liability for chargebacks due to fraud from you to the card issuer.");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.DisplayButtonsOnProductDetails", "Display buttons on product details");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.DisplayButtonsOnProductDetails.Hint", "Determine whether to display PayPal buttons on product details pages (simple products only) allowing buyers to complete a purchase without going through the full checkout process.");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.DisplayButtonsOnShoppingCart", "Display buttons on shopping cart");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.DisplayButtonsOnShoppingCart.Hint", "Determine whether to display PayPal buttons on the shopping cart page in addition to the default checkout button.");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.DisplayLogoInFooter", "Display logo in footer");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.DisplayLogoInFooter.Hint", "Determine whether to display PayPal logo in the footer. These logos and banners are a great way to let your buyers know that you choose PayPal to securely process their payments.");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.DisplayLogoInHeaderLinks", "Display logo in header links");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.DisplayLogoInHeaderLinks.Hint", "Determine whether to display PayPal logo in header links. These logos and banners are a great way to let your buyers know that you choose PayPal to securely process their payments.");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.LogoInFooter", "Logo source code");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.LogoInFooter.Hint", "Enter source code of the logo. Find more logos and banners on PayPal Logo Center. You can also modify the code to fit correctly into your theme and site style.");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.LogoInHeaderLinks", "Logo source code");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.LogoInHeaderLinks.Hint", "Enter source code of the logo. Find more logos and banners on PayPal Logo Center. You can also modify the code to fit correctly into your theme and site style.");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.MerchantId", "Merchant ID");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.MerchantId.Hint", "PayPal account ID of the merchant.");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.MerchantId.Required", "Merchant ID is required");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.PaymentType", "Payment type");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.PaymentType.Hint", "Choose a payment type to either capture payment immediately or authorize a payment for an order after order creation. Notice, that alternative payment methods don't work with the 'authorize and capture later' feature.");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.SecretKey", "Secret");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.SecretKey.Hint", "Enter your PayPal REST API secret.");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.SecretKey.Required", "Secret is required");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.SetCredentialsManually", "Specify API credentials manually");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.SetCredentialsManually.Hint", "Determine whether to manually set the credentials (for example, there is already the REST API application created, or if you want to use the sandbox mode).");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.SkipOrderConfirmPage", "Skip 'Confirm Order' page");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.SkipOrderConfirmPage.Hint", "Determine whether to skip the 'Confirm Order' step during checkout so that after approving the payment on PayPal site, customers will redirected directly to the 'Order Completed' page.");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseAlternativePayments", "Use Alternative Payments Methods");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseAlternativePayments.Hint", "With alternative payment methods, customers across the globe can pay with their bank accounts, wallets, and other local payment methods.");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseApplePay", "Use Apple Pay");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseApplePay.Hint", "Apple Pay is a mobile payment and digital wallet service provided by Apple Inc.");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseApplePay.Warning", "Don't forget to enable 'Serve unknown types of static files' on the <a href=\"{0}\" target=\"_blank\">App settings page</a>, so that the domain association file is processed correctly.");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseCardFields", "Use Custom Card Fields");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseCardFields.Hint", "Advanced Credit and Debit Card Payments (Custom Card Fields) are a PCI compliant solution to accept debit and credit card payments.");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseGooglePay", "Use Google Pay");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseGooglePay.Hint", "Google Pay is a mobile payment and digital wallet service provided by Alphabet Inc.");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseSandbox", "Use sandbox");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseSandbox.Hint", "Determine whether to use the sandbox environment for testing purposes.");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseShipmentTracking", "Use shipment tracking");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseShipmentTracking.Hint", "Determine whether to use the package tracking. It allows to automatically sync orders and shipment status with PayPal.");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseVault", "Use Vault");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseVault.Hint", "Determine whether to use PayPal Vault. It allows to store buyers payment information and use it in subsequent transactions.");
 
-                ["Plugins.Payments.PayPalCommerce.GooglePay.Discount"] = "Discount",
-                ["Plugins.Payments.PayPalCommerce.GooglePay.Shipping"] = "Shipping",
-                ["Plugins.Payments.PayPalCommerce.GooglePay.Subtotal"] = "Subtotal",
-                ["Plugins.Payments.PayPalCommerce.GooglePay.Tax"] = "Tax",
-                ["Plugins.Payments.PayPalCommerce.GooglePay.Total"] = "Total",
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.GooglePay.Discount", "Discount");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.GooglePay.Shipping", "Shipping");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.GooglePay.Subtotal", "Subtotal");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.GooglePay.Tax", "Tax");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.GooglePay.Total", "Total");
 
-                ["Plugins.Payments.PayPalCommerce.Onboarding.AccessRevoked"] = "Profile access has been successfully revoked.",
-                ["Plugins.Payments.PayPalCommerce.Onboarding.Button"] = "Sign up for PayPal",
-                ["Plugins.Payments.PayPalCommerce.Onboarding.Button.Sandbox"] = "Sign up for PayPal (sandbox)",
-                ["Plugins.Payments.PayPalCommerce.Onboarding.ButtonRevoke"] = "Revoke access",
-                ["Plugins.Payments.PayPalCommerce.Onboarding.Completed"] = "Onboarding is sucessfully completed",
-                ["Plugins.Payments.PayPalCommerce.Onboarding.Error"] = "An error occurred during the onboarding process, the credentials are empty",
-                ["Plugins.Payments.PayPalCommerce.Onboarding.InProcess"] = "Onboarding is in process, see details below",
-                ["Plugins.Payments.PayPalCommerce.Onboarding.Process.Account.Success"] = "PayPal account is created",
-                ["Plugins.Payments.PayPalCommerce.Onboarding.Process.Email.Success"] = "Email address is confirmed",
-                ["Plugins.Payments.PayPalCommerce.Onboarding.Process.Payments.Success"] = "Billing information is set",
-                ["Plugins.Payments.PayPalCommerce.Onboarding.Sandbox"] = "After you finish testing the plugin in the PayPal sandbox, move it into the production environment so you can process live transactions. To take the plugin live: 1. Revoke access to the sandbox account, 2. Disable 'Use sandbox' setting, 3. Sign up for the live PayPal account.",
-                ["Plugins.Payments.PayPalCommerce.Onboarding.Title"] = "Connect PayPal account",
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Onboarding.AccessRevoked", "Profile access has been successfully revoked.");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Onboarding.Button", "Sign up for PayPal");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Onboarding.Button.Sandbox", "Sign up for PayPal (sandbox)");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Onboarding.ButtonRevoke", "Revoke access");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Onboarding.Completed", "Onboarding is sucessfully completed");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Onboarding.Error", "An error occurred during the onboarding process, the credentials are empty");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Onboarding.InProcess", "Onboarding is in process, see details below");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Onboarding.Process.Account.Success", "PayPal account is created");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Onboarding.Process.Email.Success", "Email address is confirmed");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Onboarding.Process.Payments.Success", "Billing information is set");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Onboarding.Sandbox", "After you finish testing the plugin in the PayPal sandbox, move it into the production environment so you can process live transactions. To take the plugin live: 1. Revoke access to the sandbox account, 2. Disable 'Use sandbox' setting, 3. Sign up for the live PayPal account.");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Onboarding.Title", "Connect PayPal account");
 
-                ["Plugins.Payments.PayPalCommerce.Order.Adjustment.Name"] = "Adjustment item",
-                ["Plugins.Payments.PayPalCommerce.Order.Adjustment.Description"] = "Used to adjust the order total amount when applying complex discounts or/and calculations",
-                ["Plugins.Payments.PayPalCommerce.Order.Error"] = "Failed to get order details",
-                ["Plugins.Payments.PayPalCommerce.Order.Id"] = "PayPal order ID",
-                ["Plugins.Payments.PayPalCommerce.Order.Placement"] = "PayPal component placement",
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Order.Adjustment.Name", "Adjustment item");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Order.Adjustment.Description", "Used to adjust the order total amount when applying complex discounts or/and calculations");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Order.Error", "Failed to get order details");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Order.Id", "PayPal order ID");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Order.Placement", "PayPal component placement");
 
-                ["Plugins.Payments.PayPalCommerce.PaymentTokens"] = "Payment methods",
-                ["Plugins.Payments.PayPalCommerce.PaymentTokens.Default"] = "Default",
-                ["Plugins.Payments.PayPalCommerce.PaymentTokens.Expiration"] = "Expires",
-                ["Plugins.Payments.PayPalCommerce.PaymentTokens.None"] = "No payment methods saved yet",
-                ["Plugins.Payments.PayPalCommerce.PaymentTokens.MarkDefault"] = "Make default",
-                ["Plugins.Payments.PayPalCommerce.PaymentTokens.Title"] = "Method",
-                ["Plugins.Payments.PayPalCommerce.PayLater"] = "Pay Later",
-                ["Plugins.Payments.PayPalCommerce.Prominently"] = "Feature PayPal Prominently",
-                ["Plugins.Payments.PayPalCommerce.PaymentMethodDescription"] = "PayPal Checkout with using methods like Venmo, PayPal Credit, credit card payments",
-                ["Plugins.Payments.PayPalCommerce.RoundingWarning"] = "It looks like you have <a href=\"{0}\" target=\"_blank\">RoundPricesDuringCalculation</a> setting disabled. Keep in mind that this can lead to a discrepancy of the order total amount, as PayPal rounds to two decimals only.",
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.PaymentTokens", "Payment methods");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.PaymentTokens.Default", "Default");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.PaymentTokens.Expiration", "Expires");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.PaymentTokens.None", "No payment methods saved yet");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.PaymentTokens.MarkDefault", "Make default");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.PaymentTokens.Title", "Method");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.PayLater", "Pay Later");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Prominently", "Feature PayPal Prominently");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.PaymentMethodDescription", "PayPal Checkout with using methods like Venmo, PayPal Credit, credit card payments");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.RoundingWarning", "It looks like you have <a href=\"{0}\" target=\"_blank\">RoundPricesDuringCalculation</a> setting disabled. Keep in mind that this can lead to a discrepancy of the order total amount, as PayPal rounds to two decimals only.");
 
-                ["Plugins.Payments.PayPalCommerce.Shipment.Carrier"] = "Carrier",
-                ["Plugins.Payments.PayPalCommerce.Shipment.Carrier.Hint"] = "Specify the carrier for the shipment (e.g. UPS or FEDEX_UK, see allowed values on PayPal site).",
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Shipment.Carrier", "Carrier");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Shipment.Carrier.Hint", "Specify the carrier for the shipment (e.g. UPS or FEDEX_UK, see allowed values on PayPal site).");
 
-                ["Plugins.Payments.PayPalCommerce.WebhookWarning"] = "Webhook was not created, so some functions may not work correctly (see details in the <a href=\"{0}\" target=\"_blank\">log</a>. Please ensure that your store is under SSL, PayPal service doesn't send requests to unsecured sites.)"
-            });
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.WebhookWarning", "Webhook was not created, so some functions may not work correctly (see details in the <a href=\"{0}\" target=\"_blank\">log</a>. Please ensure that your store is under SSL, PayPal service doesn't send requests to unsecured sites.)");
 
             base.Install();
         }
@@ -541,8 +544,113 @@ namespace Nop.Plugin.Payments.PayPalCommerce
 
             _settingService.DeleteSetting<PayPalCommerceSettings>();
 
-            _localizationService.DeletePluginLocaleResources("Enums.Nop.Plugin.Payments.PayPalCommerce");
-            _localizationService.DeletePluginLocaleResources("Plugins.Payments.PayPalCommerce");
+            _objectContext.Uninstall();
+
+            _localizationService.DeletePluginLocaleResource("Enums.Nop.Plugin.Payments.PayPalCommerce.Domain.ButtonPlacement.Cart");
+            _localizationService.DeletePluginLocaleResource("Enums.Nop.Plugin.Payments.PayPalCommerce.Domain.ButtonPlacement.Product");
+            _localizationService.DeletePluginLocaleResource("Enums.Nop.Plugin.Payments.PayPalCommerce.Domain.ButtonPlacement.PaymentMethod");
+            _localizationService.DeletePluginLocaleResource("Enums.Nop.Plugin.Payments.PayPalCommerce.Domain.PaymentType.Authorize");
+            _localizationService.DeletePluginLocaleResource("Enums.Nop.Plugin.Payments.PayPalCommerce.Domain.PaymentType.Capture");
+
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.ApplePay.Discount");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.ApplePay.Shipping");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.ApplePay.Subtotal");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.ApplePay.Tax");
+
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Card.Button");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Card.New");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Card.Prefix");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Card.Save");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Configuration");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Configuration.Error");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Credentials.Valid");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Credentials.Invalid");
+
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.ClientId");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.ClientId.Hint");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.ClientId.Required");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.CustomerAuthenticationRequired");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.CustomerAuthenticationRequired.Hint");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.DisplayButtonsOnProductDetails");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.DisplayButtonsOnProductDetails.Hint");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.DisplayButtonsOnShoppingCart");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.DisplayButtonsOnShoppingCart.Hint");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.DisplayLogoInFooter");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.DisplayLogoInFooter.Hint");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.DisplayLogoInHeaderLinks");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.DisplayLogoInHeaderLinks.Hint");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.LogoInFooter");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.LogoInFooter.Hint");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.LogoInHeaderLinks");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.LogoInHeaderLinks.Hint");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.MerchantId");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.MerchantId.Hint");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.MerchantId.Required");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.PaymentType");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.PaymentType.Hint");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.SecretKey");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.SecretKey.Hint");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.SecretKey.Required");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.SetCredentialsManually");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.SetCredentialsManually.Hint");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.SkipOrderConfirmPage");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.SkipOrderConfirmPage.Hint");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseAlternativePayments");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseAlternativePayments.Hint");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseApplePay");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseApplePay.Hint");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseApplePay.Warning");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseCardFields");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseCardFields.Hint");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseGooglePay");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseGooglePay.Hint");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseSandbox");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseSandbox.Hint");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseShipmentTracking");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseShipmentTracking.Hint");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseVault");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseVault.Hint");
+
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.GooglePay.Discount");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.GooglePay.Shipping");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.GooglePay.Subtotal");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.GooglePay.Tax");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.GooglePay.Total");
+
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Onboarding.AccessRevoked");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Onboarding.Button");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Onboarding.Button.Sandbox");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Onboarding.ButtonRevoke");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Onboarding.Completed");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Onboarding.Error");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Onboarding.InProcess");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Onboarding.Process.Account.Success");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Onboarding.Process.Email.Success");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Onboarding.Process.Payments.Success");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Onboarding.Sandbox");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Onboarding.Title");
+
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Order.Adjustment.Name");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Order.Adjustment.Description");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Order.Error");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Order.Id");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Order.Placement");
+
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.PaymentTokens");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.PaymentTokens.Default");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.PaymentTokens.Expiration");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.PaymentTokens.None");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.PaymentTokens.MarkDefault");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.PaymentTokens.Title");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.PayLater");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Prominently");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.PaymentMethodDescription");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.RoundingWarning");
+
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Shipment.Carrier");
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.Shipment.Carrier.Hint");
+
+            _localizationService.DeletePluginLocaleResource("Plugins.Payments.PayPalCommerce.WebhookWarning");
 
             base.Uninstall();
         }
