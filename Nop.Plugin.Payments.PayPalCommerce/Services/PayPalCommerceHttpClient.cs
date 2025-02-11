@@ -5,7 +5,6 @@ using System.Text;
 using Microsoft.Net.Http.Headers;
 using Newtonsoft.Json;
 using Nop.Core;
-using Nop.Core.Http;
 using Nop.Plugin.Payments.PayPalCommerce.Services.Api;
 using Nop.Plugin.Payments.PayPalCommerce.Services.Api.Authentication;
 using Nop.Plugin.Payments.PayPalCommerce.Services.Api.Models;
@@ -20,7 +19,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
     {
         #region Fields
 
-        private readonly IHttpClientFactory _httpClientFactory;
+        private readonly HttpClient _httpClient;
 
         private static Dictionary<string, AccessToken> _accessTokens = new Dictionary<string, AccessToken>();
 
@@ -28,9 +27,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
 
         #region Ctor
 
-        public PayPalCommerceHttpClient(IHttpClientFactory httpClientFactory)
+        public PayPalCommerceHttpClient(HttpClient httpClient)
         {
-            _httpClientFactory = httpClientFactory;
+            _httpClient = httpClient;
         }
 
         #endregion
@@ -80,8 +79,6 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         public TResponse Request<TRequest, TResponse>(TRequest request, PayPalCommerceSettings settings)
             where TRequest : IApiRequest where TResponse : IApiResponse
         {
-            var client = _httpClientFactory.CreateClient(NopHttpDefaults.DefaultHttpClient);
-
             //prepare request body, content is always JSON except for access token requests
             var requestString = JsonConvert.SerializeObject(request, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
             var requestContent = request is GetAccessTokenRequest accessTokenRequest
@@ -102,8 +99,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             try
             {
                 var timeout = TimeSpan.FromSeconds(settings.RequestTimeout ?? PayPalCommerceDefaults.RequestTimeout);
-                if (client.Timeout != timeout)
-                    client.Timeout = timeout;
+                if (_httpClient.Timeout != timeout)
+                    _httpClient.Timeout = timeout;
             }
             catch { }
 
@@ -126,7 +123,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             requestMessage.Headers.Add("Prefer", "return=representation");
 
             //execute the request and get a result
-            var httpResponse = client.SendAsync(requestMessage).Result;
+            var httpResponse = _httpClient.SendAsync(requestMessage).Result;
             var responseString = httpResponse.Content.ReadAsStringAsync().Result;
 
             //successful request processing
