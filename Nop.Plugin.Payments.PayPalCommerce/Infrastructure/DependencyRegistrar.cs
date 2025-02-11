@@ -26,7 +26,6 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Infrastructure
         /// <param name="config">Config</param>
         public void Register(ContainerBuilder builder, ITypeFinder typeFinder, NopConfig config)
         {
-            builder.RegisterType<PayPalCommerceHttpClient>().AsSelf().InstancePerLifetimeScope();
             builder.RegisterType<PayPalCommerceModelFactory>().AsSelf().InstancePerLifetimeScope();
             builder.RegisterType<PayPalCommerceServiceManager>().AsSelf().InstancePerLifetimeScope();
             builder.RegisterType<PayPalTokenService>().AsSelf().InstancePerLifetimeScope();
