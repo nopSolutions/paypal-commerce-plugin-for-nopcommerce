@@ -5,7 +5,6 @@ using Nop.Core;
 using Nop.Plugin.Payments.PayPalCommerce.Domain;
 using Nop.Plugin.Payments.PayPalCommerce.Factories;
 using Nop.Plugin.Payments.PayPalCommerce.Models.Public;
-using Nop.Services.Messages;
 using Nop.Web.Controllers;
 
 namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
@@ -15,7 +14,6 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
     {
         #region Fields
 
-        private readonly INotificationService _notificationService;
         private readonly IWebHelper _webHelper;
         private readonly PayPalCommerceModelFactory _modelFactory;
 
@@ -23,11 +21,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
 
         #region Ctor
 
-        public PayPalCommercePublicController(INotificationService notificationService,
-            IWebHelper webHelper,
+        public PayPalCommercePublicController(IWebHelper webHelper,
             PayPalCommerceModelFactory modelFactory)
         {
-            _notificationService = notificationService;
             _webHelper = webHelper;
             _modelFactory = modelFactory;
         }
@@ -49,7 +45,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         {
             var warnings = _modelFactory.GetShoppingCartWarnings();
             if (warnings?.Any() ?? false)
-                return ErrorJson(warnings.ToArray());
+                return Json(new { error = warnings.ToArray() });
 
             return Json(new { success = true });
         }
@@ -65,7 +61,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
                 return Json(new { redirect = Url.RouteUrl(PayPalCommerceDefaults.Route.ShoppingCart) });
 
             if (!string.IsNullOrEmpty(model.Error))
-                return ErrorJson(model.Error);
+                return Json(new { error = model.Error });
 
             //customer can complete 3D Secure if prompted
             if (cardId > 0 && !string.IsNullOrEmpty(model.PayerActionUrl))
@@ -79,7 +75,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         {
             var model = _modelFactory.PrepareOrderModel((ButtonPlacement)placement, orderId, null, null, false);
             if (!string.IsNullOrEmpty(model.Error))
-                return ErrorJson(model.Error);
+                return Json(new { error = model.Error });
 
             return Json(new { status = model.Status, payerAction = model.PayerActionUrl });
         }
@@ -89,7 +85,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         {
             model = _modelFactory.PrepareOrderShippingModel(model);
             if (!string.IsNullOrEmpty(model.Error))
-                return ErrorJson(model.Error);
+                return Json(new { error = model.Error });
 
             return Json(new { success = true });
         }
@@ -105,7 +101,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
                 return Json(new { redirect = Url.RouteUrl(PayPalCommerceDefaults.Route.ShoppingCart) });
 
             if (!string.IsNullOrEmpty(model.Error))
-                return ErrorJson(model.Error);
+                return Json(new { error = model.Error });
 
             //order is approved but the customer must confirm it before
             if (!model.PayNow)
@@ -119,7 +115,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
             //or pay it right now
             var completedModel = _modelFactory.PrepareOrderCompletedModel(orderId, liabilityShift);
             if (!string.IsNullOrEmpty(completedModel.Error))
-                return ErrorJson(completedModel.Error);
+                return Json(new { error = completedModel.Error });
 
             return Json(new { redirect = Url.RouteUrl(PayPalCommerceDefaults.Route.CheckoutCompleted, new { orderId = completedModel.OrderId }) });
         }
@@ -137,7 +133,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
                 return RedirectToRoute(PayPalCommerceDefaults.Route.ShoppingCart);
 
             if (!string.IsNullOrEmpty(model.Error))
-                _notificationService.ErrorNotification(model.Error);
+                ErrorNotification(model.Error);
 
             return View("~/Plugins/Payments.PayPalCommerce/Views/Public/ConfirmOrder.cshtml", model);
         }
@@ -153,18 +149,18 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
                 return RedirectToRoute(PayPalCommerceDefaults.Route.ShoppingCart);
 
             if (!string.IsNullOrEmpty(model.Error))
-                _notificationService.ErrorNotification(model.Error);
+                ErrorNotification(model.Error);
 
             var completedModel = _modelFactory.PrepareOrderCompletedModel(orderId, liabilityShift);
 
             if (!string.IsNullOrEmpty(completedModel.Error))
             {
-                _notificationService.ErrorNotification(completedModel.Error);
+                ErrorNotification(completedModel.Error);
                 return View("~/Plugins/Payments.PayPalCommerce/Views/Public/ConfirmOrder.cshtml", model);
             }
 
             if (!string.IsNullOrEmpty(completedModel.Warning))
-                _notificationService.ErrorNotification(completedModel.Warning);
+                ErrorNotification(completedModel.Warning);
 
             return RedirectToRoute(PayPalCommerceDefaults.Route.CheckoutCompleted, new { orderId = completedModel.OrderId });
         }
@@ -180,7 +176,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
                 return Json(new { redirect = Url.RouteUrl(PayPalCommerceDefaults.Route.ShoppingCart) });
 
             if (!string.IsNullOrEmpty(model.Error))
-                return ErrorJson(model.Error);
+                return Json(new { error = model.Error });
 
             var totalItem = model.Items.FirstOrDefault(item => item.Type == "TOTAL");
             var items = model.Items.Where(item => item.Type != "TOTAL");
@@ -230,7 +226,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         {
             model = _modelFactory.PrepareApplePayShippingModel(model);
             if (!string.IsNullOrEmpty(model.Error))
-                return ErrorJson(model.Error);
+                return Json(new { error = model.Error });
 
             var totalItem = model.Items.FirstOrDefault(item => item.Type == "TOTAL");
             var items = model.Items.Where(item => item.Type != "TOTAL");
@@ -258,7 +254,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
                 return Json(new { redirect = Url.RouteUrl(PayPalCommerceDefaults.Route.ShoppingCart) });
 
             if (!string.IsNullOrEmpty(model.Error))
-                return ErrorJson(model.Error);
+                return Json(new { error = model.Error });
 
             var totalItem = model.Items.FirstOrDefault(item => item.Type == "TOTAL");
             var items = model.Items.Where(item => item.Type != "TOTAL");
@@ -292,7 +288,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         {
             var (shippingIsRequired, error) = _modelFactory.CheckShippingIsRequired(productId);
             if (!string.IsNullOrEmpty(error))
-                return ErrorJson(error);
+                return Json(new { error = error });
 
             return Json(new { shippingIsRequired = shippingIsRequired && placement != (int)ButtonPlacement.PaymentMethod });
         }
@@ -302,7 +298,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         {
             model = _modelFactory.PrepareGooglePayShippingModel(model);
             if (!string.IsNullOrEmpty(model.Error))
-                return ErrorJson(model.Error);
+                return Json(new { error = model.Error });
 
             var totalItem = model.Items.FirstOrDefault(item => item.Type == "TOTAL");
             var items = model.Items.Where(item => item.Type != "TOTAL");
@@ -345,7 +341,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
                 return RedirectToRoute(PayPalCommerceDefaults.Route.CustomerInfo);
 
             if (!string.IsNullOrEmpty(model.Error))
-                _notificationService.ErrorNotification(model.Error);
+                ErrorNotification(model.Error);
 
             return View("~/Plugins/Payments.PayPalCommerce/Views/Public/PaymentTokens.cshtml", model);
 
@@ -359,7 +355,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
                 return Json(new { redirect = Url.RouteUrl(PayPalCommerceDefaults.Route.CustomerInfo) });
 
             if (!string.IsNullOrEmpty(model.Error))
-                return ErrorJson(model.Error);
+                return Json(new { error = model.Error });
 
             return Json(new { redirect = Url.RouteUrl(PayPalCommerceDefaults.Route.PaymentTokens) });
         }
@@ -372,7 +368,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
                 return Json(new { redirect = Url.RouteUrl(PayPalCommerceDefaults.Route.CustomerInfo) });
 
             if (!string.IsNullOrEmpty(model.Error))
-                return ErrorJson(model.Error);
+                return Json(new { error = model.Error });
 
             return Json(new { redirect = Url.RouteUrl(PayPalCommerceDefaults.Route.PaymentTokens) });
         }
@@ -382,7 +378,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         {
             var model = _modelFactory.PrepareSavedCardListModel((ButtonPlacement)placement);
             if (!string.IsNullOrEmpty(model.Error))
-                return ErrorJson(model.Error);
+                return Json(new { error = model.Error });
 
             if (model.PaymentTokens?.Any() != true)
                 return Json(new { });

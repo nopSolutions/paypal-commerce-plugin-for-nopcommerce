@@ -43,7 +43,6 @@ using Nop.Services.Orders;
 using Nop.Services.Payments;
 using Nop.Services.Seo;
 using Nop.Services.Shipping;
-using Nop.Services.Shipping.Pickup;
 using Nop.Services.Stores;
 using Nop.Services.Tax;
 using Address = Nop.Plugin.Payments.PayPalCommerce.Services.Api.Models.Address;
@@ -76,14 +75,11 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         private readonly IOrderProcessingService _orderProcessingService;
         private readonly IOrderService _orderService;
         private readonly IOrderTotalCalculationService _orderTotalCalculationService;
-        private readonly IPaymentPluginManager _paymentPluginManager;
         private readonly IPaymentService _paymentService;
-        private readonly IPickupPluginManager _pickupPluginManager;
         private readonly IPictureService _pictureService;
         private readonly IPriceCalculationService _priceCalculationService;
         private readonly IProductService _productService;
         private readonly IShipmentService _shipmentService;
-        private readonly IShippingPluginManager _shippingPluginManager;
         private readonly IShippingService _shippingService;
         private readonly IShoppingCartService _shoppingCartService;
         private readonly IStateProvinceService _stateProvinceService;
@@ -118,14 +114,11 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             IOrderProcessingService orderProcessingService,
             IOrderService orderService,
             IOrderTotalCalculationService orderTotalCalculationService,
-            IPaymentPluginManager paymentPluginManager,
             IPaymentService paymentService,
-            IPickupPluginManager pickupPluginManager,
             IPictureService pictureService,
             IPriceCalculationService priceCalculationService,
             IProductService productService,
             IShipmentService shipmentService,
-            IShippingPluginManager shippingPluginManager,
             IShippingService shippingService,
             IShoppingCartService shoppingCartService,
             IStateProvinceService stateProvinceService,
@@ -156,14 +149,11 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             _orderProcessingService = orderProcessingService;
             _orderService = orderService;
             _orderTotalCalculationService = orderTotalCalculationService;
-            _paymentPluginManager = paymentPluginManager;
             _paymentService = paymentService;
-            _pickupPluginManager = pickupPluginManager;
             _pictureService = pictureService;
             _priceCalculationService = priceCalculationService;
             _productService = productService;
             _shipmentService = shipmentService;
-            _shippingPluginManager = shippingPluginManager;
             _shippingService = shippingService;
             _shoppingCartService = shoppingCartService;
             _stateProvinceService = stateProvinceService;
@@ -228,7 +218,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         {
             var store = _storeContext.CurrentStore;
             var product = _productService.GetProductById(productId ?? 0);
-            var cart = _shoppingCartService.GetShoppingCart(customer, ShoppingCartType.ShoppingCart, store.Id);
+            var cart = GetShoppingCart(customer, store.Id);
 
             _orderTotalCalculationService.GetShoppingCartSubTotal(cart, true, out _, out _, out _, out var subTotal);
 
@@ -473,11 +463,10 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             }
             var orderTotal = PrepareMoney(total.Value, details.CurrencyCode);
 
-            var shippingPlugins = _shippingPluginManager.LoadActivePlugins(details.Customer, details.Store.Id);
-            var shippingTotal = _orderTotalCalculationService.GetShoppingCartShippingTotal(details.Cart, includingTax: false, shippingPlugins);
+            var shippingTotal = _orderTotalCalculationService.GetShoppingCartShippingTotal(details.Cart, includingTax: false);
             var orderShippingTotal = PrepareMoney(shippingTotal ?? decimal.Zero, details.CurrencyCode);
 
-            var taxTotal = _orderTotalCalculationService.GetTaxTotal(details.Cart, shippingPlugins, usePaymentMethodAdditionalFee: false);
+            var taxTotal = _orderTotalCalculationService.GetTaxTotal(details.Cart, usePaymentMethodAdditionalFee: false);
             var orderTaxTotal = PrepareMoney(taxTotal, details.CurrencyCode);
 
             var itemAdjustment = decimal.Zero;
@@ -651,16 +640,16 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             if (!details.ShippingIsRequired)
                 return (null, null);
 
-            if (details.ShippingAddress is null && !_shippingSettings.AllowPickupInStore)
+            if (details.ShippingAddress is null && !_shippingSettings.AllowPickUpInStore)
                 return (null, null);
 
             var shippingOptions = new List<NopShippingOption>();
             var pickupPoints = new List<PickupPoint>();
 
             //pickup points
-            if (_shippingSettings.AllowPickupInStore)
+            if (_shippingSettings.AllowPickUpInStore)
             {
-                var pickupPointProviders = _pickupPluginManager.LoadActivePlugins(details.Customer, details.Store.Id);
+                var pickupPointProviders = _shippingService.LoadActivePickupPointProviders(details.Customer, details.Store.Id);
                 if (pickupPointProviders.Any())
                 {
                     var pickupPointsResponse = _shippingService
@@ -951,32 +940,17 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         }
 
         /// <summary>
-        /// Generate an order GUID
+        /// Get customer shopping cart
         /// </summary>
-        /// <param name="processPaymentRequest">Process payment request</param>
-        private void GenerateOrderGuid(ProcessPaymentRequest processPaymentRequest)
+        /// <param name="customer">Customer</param>
+        /// <param name="storeId">Store id</param>
+        /// <returns>Shopping cart</returns>
+        private IList<ShoppingCartItem> GetShoppingCart(Customer customer, int storeId)
         {
-            if (processPaymentRequest == null)
-                return;
-
-            var previousPaymentRequest = _actionContextAccessor.ActionContext.HttpContext.Session.Get<ProcessPaymentRequest>("OrderPaymentInfo");
-            if (_paymentSettings.RegenerateOrderGuidInterval > 0 &&
-                previousPaymentRequest != null &&
-                previousPaymentRequest.OrderGuidGeneratedOnUtc.HasValue)
-            {
-                var interval = DateTime.UtcNow - previousPaymentRequest.OrderGuidGeneratedOnUtc.Value;
-                if (interval.TotalSeconds < _paymentSettings.RegenerateOrderGuidInterval)
-                {
-                    processPaymentRequest.OrderGuid = previousPaymentRequest.OrderGuid;
-                    processPaymentRequest.OrderGuidGeneratedOnUtc = previousPaymentRequest.OrderGuidGeneratedOnUtc;
-                }
-            }
-
-            if (processPaymentRequest.OrderGuid == Guid.Empty)
-            {
-                processPaymentRequest.OrderGuid = Guid.NewGuid();
-                processPaymentRequest.OrderGuidGeneratedOnUtc = DateTime.UtcNow;
-            }
+            return customer
+                .ShoppingCartItems.Where(item => item.ShoppingCartType == ShoppingCartType.ShoppingCart)
+                .LimitPerStore(storeId)
+                .ToList();
         }
 
         #endregion
@@ -1038,10 +1012,11 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             if (!IsConnected(settings))
                 return (false, null);
 
-            var customer = _workContext.CurrentCustomer;
-            var store = _storeContext.CurrentStore;
-            var plugin = _paymentPluginManager.LoadPluginBySystemName(PayPalCommerceDefaults.SystemName, customer, store.Id);
-            if (!_paymentPluginManager.IsPluginActive(plugin))
+            var plugin = _paymentService.LoadPaymentMethodBySystemName(PayPalCommerceDefaults.SystemName);
+            if (plugin is null)
+                return (false, null);
+
+            if (!plugin.PluginDescriptor.Installed || !_paymentService.IsPaymentMethodActive(plugin))
                 return (false, plugin);
 
             return (true, plugin);
@@ -1250,7 +1225,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
 
                 var customer = _workContext.CurrentCustomer;
                 var store = _storeContext.CurrentStore;
-                var cart = _shoppingCartService.GetShoppingCart(customer, ShoppingCartType.ShoppingCart, store.Id);
+                var cart = GetShoppingCart(customer, store.Id);
                 if (!cart.Any())
                     return (false, false, null);
 
@@ -1279,7 +1254,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             {
                 var customer = _workContext.CurrentCustomer;
                 var store = _storeContext.CurrentStore;
-                var cart = _shoppingCartService.GetShoppingCart(customer, ShoppingCartType.ShoppingCart, store.Id);
+                var cart = GetShoppingCart(customer, store.Id);
                 if (!cart.Any())
                     throw new NopException("Shopping cart is empty");
 
@@ -1317,7 +1292,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             {
                 var customer = _workContext.CurrentCustomer;
                 var store = _storeContext.CurrentStore;
-                var cart = _shoppingCartService.GetShoppingCart(customer, ShoppingCartType.ShoppingCart, store.Id);
+                var cart = GetShoppingCart(customer, store.Id);
                 var shippingIsRequired = _shoppingCartService.ShoppingCartRequiresShipping(cart);
 
                 if (!shippingIsRequired && _productService.GetProductById(productId ?? 0) is Product product)
@@ -1463,7 +1438,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
 
                 var customer = _workContext.CurrentCustomer;
                 var store = _storeContext.CurrentStore;
-                var cart = _shoppingCartService.GetShoppingCart(customer, ShoppingCartType.ShoppingCart, store.Id);
+                var cart = GetShoppingCart(customer, store.Id);
                 if (!cart.Any())
                     throw new NopException("Shopping cart is empty");
 
@@ -1476,7 +1451,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     .GetAttribute<NopShippingOption>(customer, NopCustomerDefaults.SelectedShippingOptionAttribute, store.Id);
                 var pickupPoint = _genericAttributeService
                     .GetAttribute<PickupPoint>(customer, NopCustomerDefaults.SelectedPickupPointAttribute, store.Id);
-                var pickupInStore = _shippingSettings.AllowPickupInStore && pickupPoint != null;
+                var pickupInStore = _shippingSettings.AllowPickUpInStore && pickupPoint != null;
                 var shippingAddress = pickupInStore ? new NopAddress
                 {
                     Address1 = pickupPoint.Address,
@@ -1500,8 +1475,10 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 var (order, _) = GetCreatedOrder(settings, paymentRequest, placement, shippingIsRequired, paymentSource);
                 if (paymentRequest is null || order is null)
                 {
-                    paymentRequest = new ProcessPaymentRequest();
-                    GenerateOrderGuid(paymentRequest);
+                    paymentRequest = new ProcessPaymentRequest
+                    {
+                        OrderGuid = Guid.NewGuid()
+                    };
                 }
                 var orderGuid = paymentRequest.OrderGuid.ToString();
 
@@ -1698,7 +1675,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
 
                 var customer = _workContext.CurrentCustomer;
                 var store = _storeContext.CurrentStore;
-                var cart = _shoppingCartService.GetShoppingCart(customer, ShoppingCartType.ShoppingCart, store.Id);
+                var cart = GetShoppingCart(customer, store.Id);
                 if (!cart.Any())
                     throw new NopException("Shopping cart is empty");
 
@@ -1808,7 +1785,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
 
                 var customer = _workContext.CurrentCustomer;
                 var store = _storeContext.CurrentStore;
-                var cart = _shoppingCartService.GetShoppingCart(customer, ShoppingCartType.ShoppingCart, store.Id);
+                var cart = GetShoppingCart(customer, store.Id);
                 if (!cart.Any())
                     throw new NopException("Shopping cart is empty");
 
@@ -1866,7 +1843,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
 
                 var pickupPoint = _genericAttributeService
                     .GetAttribute<PickupPoint>(customer, NopCustomerDefaults.SelectedPickupPointAttribute, store.Id);
-                var pickupInStore = _shippingSettings.AllowPickupInStore && pickupPoint != null;
+                var pickupInStore = _shippingSettings.AllowPickUpInStore && pickupPoint != null;
                 var details = new CartDetails
                 {
                     Placement = placement,
@@ -1982,7 +1959,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
 
                 var customer = _workContext.CurrentCustomer;
                 var store = _storeContext.CurrentStore;
-                var cart = _shoppingCartService.GetShoppingCart(customer, ShoppingCartType.ShoppingCart, store.Id);
+                var cart = GetShoppingCart(customer, store.Id);
                 if (!cart.Any())
                     throw new NopException("Shopping cart is empty");
 
@@ -2203,7 +2180,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
 
                 var customer = _workContext.CurrentCustomer;
                 var store = _storeContext.CurrentStore;
-                var cart = _shoppingCartService.GetShoppingCart(customer, ShoppingCartType.ShoppingCart, store.Id);
+                var cart = GetShoppingCart(customer, store.Id);
                 if (!cart.Any())
                     throw new NopException("Shopping cart is empty");
 
@@ -2216,7 +2193,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     .GetAttribute<NopShippingOption>(customer, NopCustomerDefaults.SelectedShippingOptionAttribute, store.Id);
                 var pickupPoint = _genericAttributeService
                     .GetAttribute<PickupPoint>(customer, NopCustomerDefaults.SelectedPickupPointAttribute, store.Id);
-                var pickupInStore = _shippingSettings.AllowPickupInStore && pickupPoint != null;
+                var pickupInStore = _shippingSettings.AllowPickUpInStore && pickupPoint != null;
                 var shippingAddress = pickupInStore ? new NopAddress
                 {
                     Address1 = pickupPoint.Address,
@@ -2298,7 +2275,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
 
                 var customer = _workContext.CurrentCustomer;
                 var store = _storeContext.CurrentStore;
-                var cart = _shoppingCartService.GetShoppingCart(customer, ShoppingCartType.ShoppingCart, store.Id);
+                var cart = GetShoppingCart(customer, store.Id);
                 if (!cart.Any())
                     throw new NopException("Shopping cart is empty");
 
@@ -2345,7 +2322,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
 
                 var customer = _workContext.CurrentCustomer;
                 var store = _storeContext.CurrentStore;
-                var cart = _shoppingCartService.GetShoppingCart(customer, ShoppingCartType.ShoppingCart, store.Id);
+                var cart = GetShoppingCart(customer, store.Id);
                 if (!cart.Any())
                     throw new NopException("Shopping cart is empty");
 
@@ -2390,7 +2367,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
 
                 var customer = _workContext.CurrentCustomer;
                 var store = _storeContext.CurrentStore;
-                var cart = _shoppingCartService.GetShoppingCart(customer, ShoppingCartType.ShoppingCart, store.Id);
+                var cart = GetShoppingCart(customer, store.Id);
                 if (!cart.Any())
                     throw new NopException("Shopping cart is empty");
 

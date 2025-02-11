@@ -10,6 +10,7 @@ using Nop.Core;
 using Nop.Core.Domain.Cms;
 using Nop.Core.Domain.Orders;
 using Nop.Core.Domain.Payments;
+using Nop.Core.Plugins;
 using Nop.Plugin.Payments.PayPalCommerce.Data;
 using Nop.Plugin.Payments.PayPalCommerce.Domain;
 using Nop.Plugin.Payments.PayPalCommerce.Services;
@@ -17,7 +18,6 @@ using Nop.Services.Cms;
 using Nop.Services.Configuration;
 using Nop.Services.Localization;
 using Nop.Services.Payments;
-using Nop.Services.Plugins;
 using Nop.Services.Security;
 using Nop.Services.Stores;
 using Nop.Web.Framework;
@@ -304,7 +304,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce
                 return;
 
             var nextItem = configurationItem.ChildNodes.FirstOrDefault(node => node.SystemName.Equals("nopCommerce Web API plugin"))
-                ?? configurationItem.ChildNodes.FirstOrDefault(node => node.SystemName.Equals("Local plugins"));
+                ?? configurationItem.ChildNodes.FirstOrDefault(node => node.SystemName.Equals("Plugins"));
             if (nextItem is null)
                 return;
 
@@ -422,7 +422,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce
             _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Card.Prefix", "Pay by");
             _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Card.Save", "Save your card");
             _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Configuration", "Configuration");
-            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Configuration.Error", "Error: {0} (see details in the <a href=\"{1}\" target=\"_blank\">log</a>)");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Configuration.Error", "Error: {0} (see details in the log)");
             _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Credentials.Valid", "The specified credentials are valid");
             _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Credentials.Invalid", "The specified credentials are invalid");
 
@@ -459,7 +459,6 @@ namespace Nop.Plugin.Payments.PayPalCommerce
             _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseAlternativePayments.Hint", "With alternative payment methods, customers across the globe can pay with their bank accounts, wallets, and other local payment methods.");
             _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseApplePay", "Use Apple Pay");
             _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseApplePay.Hint", "Apple Pay is a mobile payment and digital wallet service provided by Apple Inc.");
-            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseApplePay.Warning", "Don't forget to enable 'Serve unknown types of static files' on the <a href=\"{0}\" target=\"_blank\">App settings page</a>, so that the domain association file is processed correctly.");
             _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseCardFields", "Use Custom Card Fields");
             _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseCardFields.Hint", "Advanced Credit and Debit Card Payments (Custom Card Fields) are a PCI compliant solution to accept debit and credit card payments.");
             _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Fields.UseGooglePay", "Use Google Pay");
@@ -505,12 +504,12 @@ namespace Nop.Plugin.Payments.PayPalCommerce
             _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.PayLater", "Pay Later");
             _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Prominently", "Feature PayPal Prominently");
             _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.PaymentMethodDescription", "PayPal Checkout with using methods like Venmo, PayPal Credit, credit card payments");
-            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.RoundingWarning", "It looks like you have <a href=\"{0}\" target=\"_blank\">RoundPricesDuringCalculation</a> setting disabled. Keep in mind that this can lead to a discrepancy of the order total amount, as PayPal rounds to two decimals only.");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.RoundingWarning", "It looks like you have RoundPricesDuringCalculation setting disabled. Keep in mind that this can lead to a discrepancy of the order total amount, as PayPal rounds to two decimals only.");
 
             _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Shipment.Carrier", "Carrier");
             _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.Shipment.Carrier.Hint", "Specify the carrier for the shipment (e.g. UPS or FEDEX_UK, see allowed values on PayPal site).");
 
-            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.WebhookWarning", "Webhook was not created, so some functions may not work correctly (see details in the <a href=\"{0}\" target=\"_blank\">log</a>. Please ensure that your store is under SSL, PayPal service doesn't send requests to unsecured sites.)");
+            _localizationService.AddOrUpdatePluginLocaleResource("Plugins.Payments.PayPalCommerce.WebhookWarning", "Webhook was not created, so some functions may not work correctly (see details in the log). Please ensure that your store is under SSL, PayPal service doesn't send requests to unsecured sites.");
 
             base.Install();
         }

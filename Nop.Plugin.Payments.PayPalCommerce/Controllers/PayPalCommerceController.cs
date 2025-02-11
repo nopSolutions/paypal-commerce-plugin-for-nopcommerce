@@ -12,7 +12,6 @@ using Nop.Plugin.Payments.PayPalCommerce.Services;
 using Nop.Services;
 using Nop.Services.Configuration;
 using Nop.Services.Localization;
-using Nop.Services.Messages;
 using Nop.Services.Security;
 using Nop.Web.Framework;
 using Nop.Web.Framework.Controllers;
@@ -29,7 +28,6 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         #region Fields
 
         private readonly ILocalizationService _localizationService;
-        private readonly INotificationService _notificationService;
         private readonly IPermissionService _permissionService;
         private readonly ISettingService _settingService;
         private readonly IStoreContext _storeContext;
@@ -43,7 +41,6 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         #region Ctor
 
         public PayPalCommerceController(ILocalizationService localizationService,
-            INotificationService notificationService,
             IPermissionService permissionService,
             ISettingService settingService,
             IStoreContext storeContext,
@@ -53,7 +50,6 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
             ShoppingCartSettings shoppingCartSettings)
         {
             _localizationService = localizationService;
-            _notificationService = notificationService;
             _permissionService = permissionService;
             _settingService = settingService;
             _storeContext = storeContext;
@@ -135,8 +131,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
             if (!string.IsNullOrEmpty(error))
             {
                 var locale = _localizationService.GetResource("Plugins.Payments.PayPalCommerce.Configuration.Error");
-                var errorMessage = string.Format(locale, error, Url.Action("List", "Log"));
-                _notificationService.ErrorNotification(errorMessage, false);
+                var errorMessage = string.Format(locale, error);
+                ErrorNotification(errorMessage);
             }
 
             return (sandboxUrl, liveUrl, merchantGuid);
@@ -187,17 +183,17 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
             //display notifications
             foreach (var warning in model.Messages.Warning)
             {
-                _notificationService.WarningNotification(warning, false);
+                WarningNotification(warning);
             }
 
             foreach (var error in model.Messages.Error)
             {
-                _notificationService.ErrorNotification(error, false);
+                ErrorNotification(error);
             }
 
             foreach (var message in model.Messages.Success)
             {
-                _notificationService.SuccessNotification(message);
+                SuccessNotification(message);
             }
 
             return model;
@@ -242,9 +238,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
             var (webhook, _) = _serviceManager.CreateWebhook(settings, storeId);
             if (string.IsNullOrEmpty(webhook?.Url))
             {
-                var url = Url.Action("List", "Log");
-                var warningMessage = string.Format(_localizationService.GetResource("Plugins.Payments.PayPalCommerce.WebhookWarning"), url);
-                _notificationService.WarningNotification(warningMessage, false);
+                var warningMessage = _localizationService.GetResource("Plugins.Payments.PayPalCommerce.WebhookWarning");
+                WarningNotification(warningMessage);
 
                 return;
             }
@@ -343,9 +338,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
             if (PayPalCommerceServiceManager.IsConnected(settings) && !_shoppingCartSettings.RoundPricesDuringCalculation)
             {
                 //prices and total aren't rounded, so display warning
-                var url = Url.Action("AllSettings", "Setting", new { settingName = nameof(ShoppingCartSettings.RoundPricesDuringCalculation) });
-                var warningMessage = string.Format(_localizationService.GetResource("Plugins.Payments.PayPalCommerce.RoundingWarning"), url);
-                _notificationService.WarningNotification(warningMessage, false);
+                var warningMessage = _localizationService.GetResource("Plugins.Payments.PayPalCommerce.RoundingWarning");
+                WarningNotification(warningMessage);
             }
 
             //ensure credentials are valid
@@ -353,15 +347,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
             {
                 var (_, credentialsError) = _serviceManager.GetAccessToken(settings);
                 if (!string.IsNullOrEmpty(credentialsError))
-                {
-                    _notificationService.ErrorNotification(_localizationService
-                        .GetResource("Plugins.Payments.PayPalCommerce.Credentials.Invalid"));
-                }
+                    ErrorNotification(_localizationService.GetResource("Plugins.Payments.PayPalCommerce.Credentials.Invalid"));
                 else
-                {
-                    _notificationService.SuccessNotification(_localizationService
-                        .GetResource("Plugins.Payments.PayPalCommerce.Credentials.Valid"));
-                }
+                    SuccessNotification(_localizationService.GetResource("Plugins.Payments.PayPalCommerce.Credentials.Valid"));
             }
 
             return View("~/Plugins/Payments.PayPalCommerce/Views/Admin/Configure.cshtml", model);
@@ -426,7 +414,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
             SaveSetting(settings, setting => setting.LogoInFooter, storeId, model.LogoInFooter_OverrideForStore);
             _settingService.ClearCache();
 
-            _notificationService.SuccessNotification(_localizationService.GetResource("Admin.Plugins.Saved"));
+            SuccessNotification(_localizationService.GetResource("Admin.Plugins.Saved"));
 
             return RedirectToAction("Configure");
         }
@@ -435,7 +423,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         public IActionResult Onboarding(ConfigurationModel model)
         {
             if (!_permissionService.Authorize(StandardPermissionProvider.ManagePaymentMethods))
-                return AccessDeniedDataTablesJson();
+                return AccessDeniedKendoGridJson();
 
             var (settings, storeId) = LoadSettings();
 
@@ -487,7 +475,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
                 }
             }
             else
-                _notificationService.ErrorNotification(_localizationService.GetResource("Plugins.Payments.PayPalCommerce.Onboarding.Error"));
+                ErrorNotification(_localizationService.GetResource("Plugins.Payments.PayPalCommerce.Onboarding.Error"));
 
             return RedirectToAction("Configure");
         }
@@ -502,7 +490,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
             //try to get credentials by authentication parameters
             var (credentials, _) = _serviceManager.SignUp(settings, model.AuthCode, model.SharedId);
             if (credentials is null)
-                return ErrorJson(_localizationService.GetResource("Plugins.Payments.PayPalCommerce.Onboarding.Error"));
+                return Json(new { error = _localizationService.GetResource("Plugins.Payments.PayPalCommerce.Onboarding.Error") });
 
             //first delete the unused webhook on a previous client, if changed
             if (PayPalCommerceServiceManager.IsConnected(settings) && !string.Equals(credentials.ClientId, settings.ClientId))
@@ -562,7 +550,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
             _settingService.ClearCache();
 
             var accessRevokedMessage = _localizationService.GetResource("Plugins.Payments.PayPalCommerce.Onboarding.AccessRevoked");
-            _notificationService.SuccessNotification(accessRevokedMessage);
+            SuccessNotification(accessRevokedMessage);
 
             return RedirectToAction("Configure");
         }
@@ -596,11 +584,11 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         public IActionResult PayLaterConfig(string config)
         {
             if (!_permissionService.Authorize(StandardPermissionProvider.ManagePaymentMethods))
-                return AccessDeniedDataTablesJson();
+                return AccessDeniedKendoGridJson();
 
             var (settings, storeId) = LoadSettings();
             if (!settings.UseSandbox && !settings.ConfiguratorSupported)
-                return ErrorJson("Merchant messaging configurator is not available");
+                return Json(new { error = "Merchant messaging configurator is not available" });
 
             settings.PayLaterConfig = config;
             SaveSetting(settings, setting => setting.PayLaterConfig, storeId);
