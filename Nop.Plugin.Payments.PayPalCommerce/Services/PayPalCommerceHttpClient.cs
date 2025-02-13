@@ -1,8 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Net;
 using System.Net.Http;
 using System.Text;
-using Microsoft.Net.Http.Headers;
 using Newtonsoft.Json;
 using Nop.Core;
 using Nop.Plugin.Payments.PayPalCommerce.Services.Api;
@@ -19,18 +20,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
     {
         #region Fields
 
-        private readonly HttpClient _httpClient;
-
         private static Dictionary<string, AccessToken> _accessTokens = new Dictionary<string, AccessToken>();
-
-        #endregion
-
-        #region Ctor
-
-        public PayPalCommerceHttpClient(HttpClient httpClient)
-        {
-            _httpClient = httpClient;
-        }
 
         #endregion
 
@@ -79,28 +69,21 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         public TResponse Request<TRequest, TResponse>(TRequest request, PayPalCommerceSettings settings)
             where TRequest : IApiRequest where TResponse : IApiResponse
         {
-            //prepare request body, content is always JSON except for access token requests
-            var requestString = JsonConvert.SerializeObject(request, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
-            var requestContent = request is GetAccessTokenRequest accessTokenRequest
-                ? new FormUrlEncodedContent(PayPalCommerceServiceManager.ObjectToDictionary(accessTokenRequest))
-                : (ByteArrayContent)new StringContent(requestString, Encoding.Default, MimeTypes.ApplicationJson);
-
             //URL depends on environment
             var baseUrl = settings.UseSandbox
                 ? PayPalCommerceDefaults.ServiceUrl.Sandbox
                 : PayPalCommerceDefaults.ServiceUrl.Live;
 
-            var requestMessage = new HttpRequestMessage(new HttpMethod(request.Method), new Uri(new Uri(baseUrl), request.Path))
-            {
-                Content = requestContent
-            };
+            //create web request
+            var webRequest = (HttpWebRequest)WebRequest.Create(new Uri(new Uri(baseUrl), request.Path));
+            webRequest.Method = request.Method;
 
             //set timeout
             try
             {
                 var timeout = TimeSpan.FromSeconds(settings.RequestTimeout ?? PayPalCommerceDefaults.RequestTimeout);
-                if (_httpClient.Timeout != timeout)
-                    _httpClient.Timeout = timeout;
+                if (webRequest.Timeout != timeout.TotalMilliseconds)
+                    webRequest.Timeout = (int)timeout.TotalMilliseconds;
             }
             catch { }
 
@@ -113,45 +96,103 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             if (request is IAuthorizedRequest)
                 authorization = $"Bearer {GetAccessToken(settings)}";
             if (!string.IsNullOrEmpty(authorization))
-                requestMessage.Headers.Add(HeaderNames.Authorization, authorization);
-            requestMessage.Headers.Add(HeaderNames.UserAgent, PayPalCommerceDefaults.UserAgent);
-            requestMessage.Headers.Add(HeaderNames.Accept, MimeTypes.ApplicationJson);
-            requestMessage.Headers.Add(PayPalCommerceDefaults.PartnerHeader.Name, PayPalCommerceDefaults.PartnerHeader.Value);
-            requestMessage.Headers.Add("PayPal-Request-Id", Guid.NewGuid().ToString());
-            requestMessage.Headers.Add("Prefer", "return=representation");
+                webRequest.Headers.Add(HttpRequestHeader.Authorization, authorization);
+            webRequest.UserAgent = PayPalCommerceDefaults.UserAgent;
+            webRequest.Accept = MimeTypes.ApplicationJson;
+            webRequest.Headers.Add(PayPalCommerceDefaults.PartnerHeader.Name, PayPalCommerceDefaults.PartnerHeader.Value);
+            webRequest.Headers.Add("PayPal-Request-Id", Guid.NewGuid().ToString());
+            webRequest.Headers.Add("Prefer", "return=representation");
 
-            //execute the request and get a result
-            var httpResponse = _httpClient.SendAsync(requestMessage).Result;
-            var responseString = httpResponse.Content.ReadAsStringAsync().Result;
-
-            //successful request processing
-            if (httpResponse.IsSuccessStatusCode)
+            if (request.Method != WebRequestMethods.Http.Get)
             {
-                if (typeof(TResponse) == typeof(EmptyResponse))
-                    return default;
+                //prepare request body, content is always JSON except for access token requests
+                var requestString = JsonConvert.SerializeObject(request, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
+                var requestContent = request is GetAccessTokenRequest accessTokenRequest
+                    ? new FormUrlEncodedContent(PayPalCommerceServiceManager.ObjectToDictionary(accessTokenRequest))
+                    : (ByteArrayContent)new StringContent(requestString, Encoding.Default, MimeTypes.ApplicationJson);
 
-                return JsonConvert.DeserializeObject<TResponse>(responseString ?? string.Empty);
+                var postData = Encoding.UTF8.GetBytes(requestContent.ReadAsStringAsync().Result);
+
+                webRequest.ContentType = request is GetAccessTokenRequest ? MimeTypes.ApplicationXWwwFormUrlencoded : MimeTypes.ApplicationJson;
+                webRequest.ContentLength = postData.Length;
+
+                using (var stream = webRequest.GetRequestStream())
+                {
+                    stream.Write(postData, 0, postData.Length);
+                }
             }
 
-            //failed request processing
-            var error = $"Failed request ({httpResponse.StatusCode})";
-            var identityErrorResponse = JsonConvert.DeserializeObject<IdentityErrorResponse>(responseString ?? string.Empty);
-            if (!string.IsNullOrEmpty(identityErrorResponse?.Error))
+            try
             {
-                var description = !string.IsNullOrEmpty(identityErrorResponse.ErrorDescription)
-                    ? identityErrorResponse.ErrorDescription
-                    : identityErrorResponse.Error;
-                error += $": {description}";
-            }
+                //execute the request and get a result
+                var responseString = string.Empty;
+                var httpResponse = (HttpWebResponse)webRequest.GetResponse();
+                using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
+                    responseString = streamReader.ReadToEnd();
 
-            var errorResponse = JsonConvert.DeserializeObject<ErrorResponse>(responseString ?? string.Empty);
-            if (!string.IsNullOrEmpty(errorResponse?.Name))
+                //successful request processing
+                if (((int)httpResponse.StatusCode >= 200) && ((int)httpResponse.StatusCode <= 299))
+                {
+                    if (typeof(TResponse) == typeof(EmptyResponse))
+                        return default;
+
+                    return JsonConvert.DeserializeObject<TResponse>(responseString ?? string.Empty);
+                }
+
+                //failed request processing
+                var error = $"Failed request ({httpResponse.StatusCode})";
+                var identityErrorResponse = JsonConvert.DeserializeObject<IdentityErrorResponse>(responseString ?? string.Empty);
+                if (!string.IsNullOrEmpty(identityErrorResponse?.Error))
+                {
+                    var description = !string.IsNullOrEmpty(identityErrorResponse.ErrorDescription)
+                        ? identityErrorResponse.ErrorDescription
+                        : identityErrorResponse.Error;
+                    error += $": {description}";
+                }
+
+                var errorResponse = JsonConvert.DeserializeObject<ErrorResponse>(responseString ?? string.Empty);
+                if (!string.IsNullOrEmpty(errorResponse?.Name))
+                {
+                    error += $": {(!string.IsNullOrEmpty(errorResponse.Message) ? errorResponse.Message : errorResponse.Name)}";
+                    error += $"{Environment.NewLine}{JsonConvert.SerializeObject(errorResponse, Formatting.Indented)}";
+                }
+
+                throw new NopException("Failed request", new NopException(error));
+            }
+            catch (Exception exception)
             {
-                error += $": {(!string.IsNullOrEmpty(errorResponse.Message) ? errorResponse.Message : errorResponse.Name)}";
-                error += $"{Environment.NewLine}{JsonConvert.SerializeObject(errorResponse, Formatting.Indented)}";
-            }
+                //try to get error response
+                if (exception is WebException webException)
+                {
+                    var httpResponse = (HttpWebResponse)webException.Response;
+                    using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
+                    {
+                        var responseString = streamReader.ReadToEnd();
 
-            throw new NopException("Failed request", new NopException(error));
+                        //failed request processing
+                        var error = $"Failed request ({httpResponse.StatusCode})";
+                        var identityErrorResponse = JsonConvert.DeserializeObject<IdentityErrorResponse>(responseString ?? string.Empty);
+                        if (!string.IsNullOrEmpty(identityErrorResponse?.Error))
+                        {
+                            var description = !string.IsNullOrEmpty(identityErrorResponse.ErrorDescription)
+                                ? identityErrorResponse.ErrorDescription
+                                : identityErrorResponse.Error;
+                            error += $": {description}";
+                        }
+
+                        var errorResponse = JsonConvert.DeserializeObject<ErrorResponse>(responseString ?? string.Empty);
+                        if (!string.IsNullOrEmpty(errorResponse?.Name))
+                        {
+                            error += $": {(!string.IsNullOrEmpty(errorResponse.Message) ? errorResponse.Message : errorResponse.Name)}";
+                            error += $"{Environment.NewLine}{JsonConvert.SerializeObject(errorResponse, Formatting.Indented)}";
+                        }
+
+                        throw new NopException("Failed request", new NopException(error));
+                    }
+                }
+
+                throw new NopException("Failed request");
+            }
         }
 
         #endregion

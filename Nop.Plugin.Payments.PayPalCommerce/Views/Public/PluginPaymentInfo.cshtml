@@ -11,13 +11,13 @@
         <h1>@T("Checkout.PaymentInfo")</h1>
     </div>
     <div class="page-body checkout-data">
-        @await Component.InvokeAsync("Widget", new { widgetZone = PublicWidgetZones.CheckoutPaymentInfoTop, additionalData = Model })
+        @await Component.InvokeAsync("Widget", new { widgetZone = "checkout_payment_info_top", additionalData = Model })
         <div class="section payment-info">
             <div class="info">
                 @await Component.InvokeAsync(PayPalCommerceDefaults.BUTTONS_VIEW_COMPONENT_NAME, new { widgetZone = "paypal_payment_info" })
             </div>
         </div>
-        @await Component.InvokeAsync("Widget", new { widgetZone = PublicWidgetZones.CheckoutPaymentInfoBottom, additionalData = Model })
+        @await Component.InvokeAsync("Widget", new { widgetZone = "checkout_payment_info_bottom", additionalData = Model })
         <div class="section order-summary">
             <div class="title">
                 <strong>@T("Checkout.OrderSummary")</strong>

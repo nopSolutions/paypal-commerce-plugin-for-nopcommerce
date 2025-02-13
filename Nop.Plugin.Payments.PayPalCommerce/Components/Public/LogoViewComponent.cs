@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewComponents;
 using Nop.Plugin.Payments.PayPalCommerce.Services;
 using Nop.Web.Framework.Components;
-using Nop.Web.Framework.Infrastructure;
 
 namespace Nop.Plugin.Payments.PayPalCommerce.Components.Public
 {
@@ -45,9 +44,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Components.Public
             if (!active)
                 return Content(string.Empty);
 
-            var script = widgetZone.Equals(PublicWidgetZones.HeaderLinksBefore) && _settings.DisplayLogoInHeaderLinks
+            var script = widgetZone.Equals(PayPalCommerceDefaults.HeaderLinksBefore) && _settings.DisplayLogoInHeaderLinks
                 ? _settings.LogoInHeaderLinks
-                : widgetZone.Equals(PublicWidgetZones.Footer) && _settings.DisplayLogoInFooter
+                : widgetZone.Equals(PayPalCommerceDefaults.Footer) && _settings.DisplayLogoInFooter
                 ? _settings.LogoInFooter
                 : null;
 

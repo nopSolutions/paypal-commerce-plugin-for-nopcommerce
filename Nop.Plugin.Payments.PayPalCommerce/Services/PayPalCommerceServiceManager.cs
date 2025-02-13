@@ -78,6 +78,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         private readonly IPaymentService _paymentService;
         private readonly IPictureService _pictureService;
         private readonly IPriceCalculationService _priceCalculationService;
+        private readonly IProductAttributeParser _productAttributeParser;
         private readonly IProductService _productService;
         private readonly IShipmentService _shipmentService;
         private readonly IShippingService _shippingService;
@@ -117,6 +118,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             IPaymentService paymentService,
             IPictureService pictureService,
             IPriceCalculationService priceCalculationService,
+            IProductAttributeParser productAttributeParser,
             IProductService productService,
             IShipmentService shipmentService,
             IShippingService shippingService,
@@ -152,6 +154,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             _paymentService = paymentService;
             _pictureService = pictureService;
             _priceCalculationService = priceCalculationService;
+            _productAttributeParser = productAttributeParser;
             _productService = productService;
             _shipmentService = shipmentService;
             _shippingService = shippingService;
@@ -283,7 +286,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         private ExperienceContext PrepareOrderContext(PayPalCommerceSettings settings, CartDetails details, string orderGuid, bool isApplePay = false)
         {
             var urlHelper = _urlHelperFactory.GetUrlHelper(_actionContextAccessor.ActionContext);
-            var protocol = _webHelper.CurrentRequestProtocol;
+            var protocol = Uri.UriSchemeHttps;
 
             var shippingPreference = ShippingPreferenceType.NO_SHIPPING.ToString().ToUpper();
             if (details.ShippingIsRequired)
@@ -333,15 +336,15 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             var customer = details.Customer;
             var address = details.BillingAddress;
             var isPaymentMethodPage = details.Placement == ButtonPlacement.PaymentMethod;
-            var firstName = _genericAttributeService.GetAttribute<string>(customer, NopCustomerDefaults.FirstNameAttribute);
-            var lastName = _genericAttributeService.GetAttribute<string>(customer, NopCustomerDefaults.LastNameAttribute);
-            var dateOfBirth = _genericAttributeService.GetAttribute<string>(customer, NopCustomerDefaults.DateOfBirthAttribute);
-            var stateId = _genericAttributeService.GetAttribute<int>(customer, NopCustomerDefaults.StateProvinceIdAttribute);
-            var countryId = _genericAttributeService.GetAttribute<int>(customer, NopCustomerDefaults.CountryIdAttribute);
-            var line1 = _genericAttributeService.GetAttribute<string>(customer, NopCustomerDefaults.StreetAddressAttribute);
-            var line2 = _genericAttributeService.GetAttribute<string>(customer, NopCustomerDefaults.StreetAddress2Attribute);
-            var city = _genericAttributeService.GetAttribute<string>(customer, NopCustomerDefaults.CityAttribute);
-            var zip = _genericAttributeService.GetAttribute<string>(customer, NopCustomerDefaults.ZipPostalCodeAttribute);
+            var firstName = customer.GetAttribute<string>(SystemCustomerAttributeNames.FirstName);
+            var lastName = customer.GetAttribute<string>(SystemCustomerAttributeNames.LastName);
+            var dateOfBirth = customer.GetAttribute<string>(SystemCustomerAttributeNames.DateOfBirth);
+            var stateId = customer.GetAttribute<int>(SystemCustomerAttributeNames.StateProvinceId);
+            var countryId = customer.GetAttribute<int>(SystemCustomerAttributeNames.CountryId);
+            var line1 = customer.GetAttribute<string>(SystemCustomerAttributeNames.StreetAddress);
+            var line2 = customer.GetAttribute<string>(SystemCustomerAttributeNames.StreetAddress);
+            var city = customer.GetAttribute<string>(SystemCustomerAttributeNames.City);
+            var zip = customer.GetAttribute<string>(SystemCustomerAttributeNames.ZipPostalCode);
 
             var email = CommonHelper.EnsureMaximumLength(isPaymentMethodPage ? address.Email : customer.Email, 254);
             var name = new Name
@@ -350,7 +353,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 Surname = CommonHelper.EnsureMaximumLength(isPaymentMethodPage ? address.LastName : lastName, 140)
             };
             //phone number format is unpredictable
-            //var customerPhone = _genericAttributeService.GetAttribute<string>(customer, NopCustomerDefaults.PhoneAttribute);
+            //var customerPhone = customer.GetAttribute<string>(SystemCustomerAttributeNames.Phone);
             //var phone = isPaymentMethodPage
             //    ? (!string.IsNullOrEmpty(address.PhoneNumber) ? new Phone { PhoneNumber = new() { NationalNumber = CommonHelper.EnsureMaximumLength(CommonHelper.EnsureNumericOnly(address.PhoneNumber), 14) } } : null)
             //    : !string.IsNullOrEmpty(customerPhone) ? new Phone { PhoneNumber = new() { NationalNumber = CommonHelper.EnsureMaximumLength(CommonHelper.EnsureNumericOnly(customerPhone), 14) } } : null;
@@ -387,10 +390,10 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             var items = details.Cart.Select(item =>
             {
                 var product = _productService.GetProductById(item.ProductId);
-                var sku = _productService.FormatSku(product, item.AttributesXml);
-                var seName = _urlRecordService.GetSeName(product);
-                var url = urlHelper.RouteUrl("Product", new { SeName = seName }, _webHelper.CurrentRequestProtocol);
-                var picture = _pictureService.GetProductPicture(product, item.AttributesXml);
+                var sku = product.Sku;
+                var seName = product.GetSeName();
+                var url = urlHelper.RouteUrl("Product", new { SeName = seName }, Uri.UriSchemeHttps);
+                var picture = product.GetProductPicture(item.AttributesXml, _pictureService, _productAttributeParser);
                 var imageUrl = _pictureService.GetPictureUrl(picture);
 
                 var itemSubTotal = _priceCalculationService.GetSubTotal(item, true, out var itemDiscount, out _, out _);
@@ -413,8 +416,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             }).ToList();
 
             //and checkout attributes
-            var checkoutAttributes = _genericAttributeService
-                .GetAttribute<string>(details.Customer, NopCustomerDefaults.CheckoutAttributes, details.Store.Id);
+            var checkoutAttributes = details.Customer.GetAttribute<string>(SystemCustomerAttributeNames.CheckoutAttributes, details.Store.Id);
             var checkoutAttributeValues = _checkoutAttributeParser.ParseCheckoutAttributeValues(checkoutAttributes);
             foreach (var attributeValue in checkoutAttributeValues)
             {
@@ -528,7 +530,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 ? $"{shippingAddress.FirstName} {shippingAddress.LastName}"
                 : null;
             if (string.IsNullOrEmpty(fullName))
-                fullName = _customerService.GetCustomerFullName(details.Customer);
+                fullName = $"{details.Customer.GetAttribute<string>(SystemCustomerAttributeNames.FirstName)} {details.Customer.GetAttribute<string>(SystemCustomerAttributeNames.LastName)}";
 
             //if the shipping option type is set to PICKUP, then the full name should start with S2S meaning ship to store (for example, S2S My Store)
             if (details.IsPickup && details.PickupPoint != null)
@@ -594,9 +596,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
 
             //save selected options in attributes
             _genericAttributeService
-                .SaveAttribute(details.Customer, NopCustomerDefaults.SelectedShippingOptionAttribute, selectedShippingOption, details.Store.Id);
+                .SaveAttribute(details.Customer, SystemCustomerAttributeNames.SelectedShippingOption, selectedShippingOption, details.Store.Id);
             _genericAttributeService
-                .SaveAttribute(details.Customer, NopCustomerDefaults.SelectedPickupPointAttribute, pickupPoint, details.Store.Id);
+                .SaveAttribute(details.Customer, SystemCustomerAttributeNames.SelectedPickupPoint, pickupPoint, details.Store.Id);
 
             ShippingOption convertOption(NopShippingOption option)
             {
@@ -709,9 +711,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     CountryId = country?.Id,
                     ZipPostalCode = selectedAddress.PostalCode
                 });
-                if (newShippingAddress.Id != details.Customer.ShippingAddressId)
+                if (newShippingAddress.Id != details.Customer.ShippingAddress?.Id)
                 {
-                    details.Customer.ShippingAddressId = newShippingAddress.Id;
+                    details.Customer.ShippingAddress = newShippingAddress;
                     _customerService.UpdateCustomer(details.Customer);
                 }
             }
@@ -719,8 +721,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             //change shipping option when customer selects another one
             if (string.IsNullOrEmpty(selectedOption.Id))
             {
-                var shippingOption = _genericAttributeService
-                    .GetAttribute<NopShippingOption>(details.Customer, NopCustomerDefaults.SelectedShippingOptionAttribute, details.Store.Id);
+                var shippingOption = details.Customer
+                    .GetAttribute<NopShippingOption>(SystemCustomerAttributeNames.SelectedShippingOption, details.Store.Id);
                 if (shippingOption != null)
                 {
                     var type = IsPickup(shippingOption) ? ShippingType.PICKUP.ToString() : ShippingType.SHIPPING.ToString();
@@ -966,7 +968,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// <returns>Dictionary of properties names and values</returns>
         public static Dictionary<string, string> ObjectToDictionary(object data)
         {
-            return new Dictionary<string, string>(data.GetType().GetProperties().Select(property =>
+            return data.GetType().GetProperties().Select(property =>
             {
                 var key = property
                     ?.GetCustomAttributes(typeof(JsonPropertyAttribute), false).OfType<JsonPropertyAttribute>().FirstOrDefault()
@@ -975,7 +977,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     ? boolValue.ToString().ToLower()
                     : property.GetValue(data)?.ToString();
                 return new KeyValuePair<string, string>(key, value);
-            }).Where(pair => !string.IsNullOrEmpty(pair.Key) && !string.IsNullOrEmpty(pair.Value)));
+            }).Where(pair => !string.IsNullOrEmpty(pair.Key) && !string.IsNullOrEmpty(pair.Value)).ToDictionary(pair => pair.Key, pair => pair.Value);
         }
 
         #region Configuration
@@ -1012,11 +1014,11 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             if (!IsConnected(settings))
                 return (false, null);
 
-            var plugin = _paymentService.LoadPaymentMethodBySystemName(PayPalCommerceDefaults.SystemName);
+            var plugin = _paymentService.LoadPaymentMethodBySystemName(PayPalCommerceDefaults.SystemName) as PayPalCommercePaymentMethod;
             if (plugin is null)
                 return (false, null);
 
-            if (!plugin.PluginDescriptor.Installed || !_paymentService.IsPaymentMethodActive(plugin))
+            if (!plugin.PluginDescriptor.Installed || !plugin.IsPaymentMethodActive(_paymentSettings))
                 return (false, plugin);
 
             return (true, plugin);
@@ -1071,7 +1073,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 var email = address != null ? address.Email : customer.Email;
                 var fullName = address != null
                     ? $"{address.FirstName} {address.LastName}"
-                    : _customerService.GetCustomerFullName(customer);
+                    : $"{customer.GetAttribute<string>(SystemCustomerAttributeNames.FirstName)} {customer.GetAttribute<string>(SystemCustomerAttributeNames.LastName)}";
 
                 //prepare script components
                 var components = new List<string>() { "buttons", "funding-eligibility" };
@@ -1092,7 +1094,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     Currency = currencyCode.ToUpper(),
                     Intent = settings.PaymentType.ToString().ToLower(),
                     Commit = placement == ButtonPlacement.PaymentMethod && settings.SkipOrderConfirmPage,
-                    Components = string.Join(',', components),
+                    Components = string.Join(",", components),
                     EnableFunding = settings.EnabledFunding,
                     DisableFunding = settings.DisabledFunding,
                     Vault = settings.UseVault && !isGuest,
@@ -1220,9 +1222,6 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         {
             return HandleFunction(() =>
             {
-                if (_orderSettings.CheckoutDisabled)
-                    return (false, false, null);
-
                 var customer = _workContext.CurrentCustomer;
                 var store = _storeContext.CurrentStore;
                 var cart = GetShoppingCart(customer, store.Id);
@@ -1260,8 +1259,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
 
                 _customerService.ResetCheckoutData(customer, store.Id, clearShippingMethod: false);
 
-                var checkoutAttributesXml = _genericAttributeService
-                    .GetAttribute<string>(customer, NopCustomerDefaults.CheckoutAttributes, store.Id);
+                var checkoutAttributesXml = customer.GetAttribute<string>(SystemCustomerAttributeNames.CheckoutAttributes, store.Id);
                 var cartWarnings = _shoppingCartService.GetShoppingCartWarnings(cart, checkoutAttributesXml, true);
                 if (cartWarnings.Any())
                     return cartWarnings;
@@ -1272,7 +1270,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
 
                     var itemWarnings = _shoppingCartService
                         .GetShoppingCartItemWarnings(customer, item.ShoppingCartType, product, item.StoreId, item.AttributesXml,
-                        item.CustomerEnteredPrice, item.RentalStartDateUtc, item.RentalEndDateUtc, item.Quantity, false, item.Id);
+                        item.CustomerEnteredPrice, item.RentalStartDateUtc, item.RentalEndDateUtc, item.Quantity, false);
                     if (itemWarnings.Any())
                         return itemWarnings;
                 }
@@ -1293,7 +1291,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 var customer = _workContext.CurrentCustomer;
                 var store = _storeContext.CurrentStore;
                 var cart = GetShoppingCart(customer, store.Id);
-                var shippingIsRequired = _shoppingCartService.ShoppingCartRequiresShipping(cart);
+                var shippingIsRequired = cart.RequiresShipping(_productService, _productAttributeParser);
 
                 if (!shippingIsRequired && _productService.GetProductById(productId ?? 0) is Product product)
                     shippingIsRequired = product.IsShipEnabled;
@@ -1442,27 +1440,24 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 if (!cart.Any())
                     throw new NopException("Shopping cart is empty");
 
-                var billingAddress = _addressService.GetAddressById(customer.BillingAddressId ?? 0);
+                var billingAddress = customer.BillingAddress;
                 if (placement == ButtonPlacement.PaymentMethod && billingAddress is null)
                     throw new NopException("Customer billing address not set");
 
-                var shippingIsRequired = _shoppingCartService.ShoppingCartRequiresShipping(cart);
-                var shippingOption = _genericAttributeService
-                    .GetAttribute<NopShippingOption>(customer, NopCustomerDefaults.SelectedShippingOptionAttribute, store.Id);
-                var pickupPoint = _genericAttributeService
-                    .GetAttribute<PickupPoint>(customer, NopCustomerDefaults.SelectedPickupPointAttribute, store.Id);
+                var shippingIsRequired = cart.RequiresShipping(_productService, _productAttributeParser);
+                var shippingOption = customer.GetAttribute<NopShippingOption>(SystemCustomerAttributeNames.SelectedShippingOption, store.Id);
+                var pickupPoint = customer.GetAttribute<PickupPoint>(SystemCustomerAttributeNames.SelectedPickupPoint, store.Id);
                 var pickupInStore = _shippingSettings.AllowPickUpInStore && pickupPoint != null;
                 var shippingAddress = pickupInStore ? new NopAddress
                 {
                     Address1 = pickupPoint.Address,
                     City = pickupPoint.City,
-                    County = pickupPoint.County,
                     CountryId = _countryService.GetCountryByTwoLetterIsoCode(pickupPoint.CountryCode)?.Id,
                     StateProvinceId = _stateProvinceService.GetStateProvinceByAbbreviation(pickupPoint.StateAbbreviation,
                         _countryService.GetCountryByTwoLetterIsoCode(pickupPoint.CountryCode)?.Id)?.Id,
                     ZipPostalCode = pickupPoint.ZipPostalCode,
                     CreatedOnUtc = DateTime.UtcNow
-                } : _addressService.GetAddressById(customer.ShippingAddressId ?? 0);
+                } : customer.ShippingAddress;
                 if (placement == ButtonPlacement.PaymentMethod && shippingIsRequired && shippingAddress is null)
                     throw new NopException("Customer shipping address not set");
 
@@ -1715,7 +1710,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 if (unit is null || !string.Equals(unit.CustomId, paymentRequest.OrderGuid.ToString(), StringComparison.InvariantCultureIgnoreCase))
                     throw new NopException("Failed to get PayPal order info");
 
-                var shippingIsRequired = _shoppingCartService.ShoppingCartRequiresShipping(cart);
+                var shippingIsRequired = cart.RequiresShipping(_productService, _productAttributeParser);
                 if (!shippingIsRequired)
                     return false;
 
@@ -1835,14 +1830,13 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     throw new NopException("Failed to get PayPal order info");
 
                 _genericAttributeService
-                    .SaveAttribute(customer, NopCustomerDefaults.SelectedPaymentMethodAttribute, PayPalCommerceDefaults.SystemName, store.Id);
+                    .SaveAttribute(customer, SystemCustomerAttributeNames.SelectedPaymentMethod, PayPalCommerceDefaults.SystemName, store.Id);
 
                 //place order immediately, once order is completed
                 if (order.Status.ToUpper() == OrderStatusType.COMPLETED.ToString())
                     return (order, true);
 
-                var pickupPoint = _genericAttributeService
-                    .GetAttribute<PickupPoint>(customer, NopCustomerDefaults.SelectedPickupPointAttribute, store.Id);
+                var pickupPoint = customer.GetAttribute<PickupPoint>(SystemCustomerAttributeNames.SelectedPickupPoint, store.Id);
                 var pickupInStore = _shippingSettings.AllowPickUpInStore && pickupPoint != null;
                 var details = new CartDetails
                 {
@@ -1891,8 +1885,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 //or update billing details and redirect customer to the confirmation page
                 if (order.Payer != null)
                 {
-                    var firstName = _genericAttributeService.GetAttribute<string>(customer, NopCustomerDefaults.FirstNameAttribute);
-                    var lastName = _genericAttributeService.GetAttribute<string>(customer, NopCustomerDefaults.LastNameAttribute);
+                    var firstName = customer.GetAttribute<string>(SystemCustomerAttributeNames.FirstName);
+                    var lastName = customer.GetAttribute<string>(SystemCustomerAttributeNames.LastName);
                     var billingCountry = _countryService.GetCountryByTwoLetterIsoCode(order.Payer.Address?.CountryCode);
                     var billingState = _stateProvinceService
                         .GetStateProvinceByAbbreviation(order.Payer.Address?.AdminArea1, billingCountry?.Id);
@@ -1908,12 +1902,11 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                         StateProvinceId = billingState?.Id,
                         CountryId = billingCountry?.Id
                     });
-                    if (billingAddress.Id != customer.BillingAddressId)
-                        customer.BillingAddressId = billingAddress.Id;
+                    if (billingAddress.Id != customer.BillingAddress?.Id)
+                        customer.BillingAddress = billingAddress;
 
-                    if (_shoppingCartService.ShoppingCartRequiresShipping(cart) &&
-                        _genericAttributeService.GetAttribute<NopShippingOption>(customer,
-                            NopCustomerDefaults.SelectedShippingOptionAttribute, store.Id) is NopShippingOption shippingOption &&
+                    if (cart.RequiresShipping(_productService, _productAttributeParser) &&
+                        customer.GetAttribute<NopShippingOption>(SystemCustomerAttributeNames.SelectedShippingOption, store.Id) is NopShippingOption shippingOption &&
                         !IsPickup(shippingOption) &&
                         order.PurchaseUnits.FirstOrDefault()?.Shipping is Shipping shipping &&
                         shipping.Address is Address shippingAddress)
@@ -1931,8 +1924,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                             StateProvinceId = shippingState?.Id,
                             CountryId = shippingCountry?.Id
                         });
-                        if (newShippingAddress.Id != customer.ShippingAddressId)
-                            customer.ShippingAddressId = newShippingAddress.Id;
+                        if (newShippingAddress.Id != customer.ShippingAddress?.Id)
+                            customer.ShippingAddress = newShippingAddress;
                     }
 
                     _customerService.UpdateCustomer(customer);
@@ -2016,7 +2009,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 //try to place an order
                 var placeOrderResult = _orderProcessingService.PlaceOrder(paymentRequest);
                 if (placeOrderResult?.Success != true || placeOrderResult.PlacedOrder is null)
-                    throw new NopException(string.Join(',', placeOrderResult?.Errors ?? new List<string>()));
+                    throw new NopException(string.Join(",", placeOrderResult?.Errors ?? new List<string>()));
 
                 //clear payment request
                 _actionContextAccessor.ActionContext.HttpContext.Session
@@ -2188,23 +2181,20 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 if (placement == ButtonPlacement.PaymentMethod && billingAddress is null)
                     throw new NopException("Customer billing address not set");
 
-                var shippingIsRequired = _shoppingCartService.ShoppingCartRequiresShipping(cart);
-                var shippingOption = _genericAttributeService
-                    .GetAttribute<NopShippingOption>(customer, NopCustomerDefaults.SelectedShippingOptionAttribute, store.Id);
-                var pickupPoint = _genericAttributeService
-                    .GetAttribute<PickupPoint>(customer, NopCustomerDefaults.SelectedPickupPointAttribute, store.Id);
+                var shippingIsRequired = cart.RequiresShipping(_productService, _productAttributeParser);
+                var shippingOption = customer.GetAttribute<NopShippingOption>(SystemCustomerAttributeNames.SelectedShippingOption, store.Id);
+                var pickupPoint = customer.GetAttribute<PickupPoint>(SystemCustomerAttributeNames.SelectedPickupPoint, store.Id);
                 var pickupInStore = _shippingSettings.AllowPickUpInStore && pickupPoint != null;
                 var shippingAddress = pickupInStore ? new NopAddress
                 {
                     Address1 = pickupPoint.Address,
                     City = pickupPoint.City,
-                    County = pickupPoint.County,
                     CountryId = _countryService.GetCountryByTwoLetterIsoCode(pickupPoint.CountryCode)?.Id,
                     StateProvinceId = _stateProvinceService.GetStateProvinceByAbbreviation(pickupPoint.StateAbbreviation,
                         _countryService.GetCountryByTwoLetterIsoCode(pickupPoint.CountryCode)?.Id)?.Id,
                     ZipPostalCode = pickupPoint.ZipPostalCode,
                     CreatedOnUtc = DateTime.UtcNow
-                } : _addressService.GetAddressById(customer.ShippingAddressId ?? 0);
+                } : customer.ShippingAddress;
                 if (placement == ButtonPlacement.PaymentMethod && shippingIsRequired && shippingAddress is null)
                     throw new NopException("Customer shipping address not set");
 
@@ -2238,8 +2228,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 var items = PrepareOrderItems(details);
                 var orderAmount = PrepareOrderMoney(details, items);
 
-                var firstName = _genericAttributeService.GetAttribute<string>(customer, NopCustomerDefaults.FirstNameAttribute);
-                var lastName = _genericAttributeService.GetAttribute<string>(customer, NopCustomerDefaults.LastNameAttribute);
+                var firstName = customer.GetAttribute<string>(SystemCustomerAttributeNames.FirstName);
+                var lastName = customer.GetAttribute<string>(SystemCustomerAttributeNames.LastName);
                 var shipping = PrepareShippingDetails(details, shippingOption?.Name, true);
                 var shippingContact = new Contact
                 {
@@ -2283,12 +2273,12 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 if (placement == ButtonPlacement.PaymentMethod)
                     return null;
 
-                var shippingIsRequired = _shoppingCartService.ShoppingCartRequiresShipping(cart);
+                var shippingIsRequired = cart.RequiresShipping(_productService, _productAttributeParser);
                 if (!shippingIsRequired)
                     return null;
 
                 //get option id
-                var optionValues = selectedOption?.Split('|', StringSplitOptions.RemoveEmptyEntries)?.ToList() ?? new List<string>();
+                var optionValues = selectedOption?.Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries)?.ToList() ?? new List<string>();
                 var option = (optionValues.FirstOrDefault(), optionValues.LastOrDefault());
 
                 var details = new CartDetails
@@ -2341,9 +2331,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 var items = PrepareOrderItems(details);
                 var orderAmount = PrepareOrderMoney(details, items);
 
-                var countryId = _genericAttributeService.GetAttribute<int>(customer, NopCustomerDefaults.CountryIdAttribute);
+                var countryId = customer.GetAttribute<int>(SystemCustomerAttributeNames.CountryId);
                 var country = _countryService.GetCountryById(billingAddress?.CountryId ?? countryId);
-                var shippingIsRequired = _shoppingCartService.ShoppingCartRequiresShipping(cart);
+                var shippingIsRequired = cart.RequiresShipping(_productService, _productAttributeParser);
 
                 return (orderAmount, country?.TwoLetterIsoCode ?? "US", shippingIsRequired);
             });
@@ -2375,12 +2365,12 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 if (placement == ButtonPlacement.PaymentMethod)
                     return null;
 
-                var shippingIsRequired = _shoppingCartService.ShoppingCartRequiresShipping(cart);
+                var shippingIsRequired = cart.RequiresShipping(_productService, _productAttributeParser);
                 if (!shippingIsRequired)
                     return null;
 
                 //get option id
-                var optionValues = selectedOption?.Split('|', StringSplitOptions.RemoveEmptyEntries)?.ToList() ?? new List<string>();
+                var optionValues = selectedOption?.Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries)?.ToList() ?? new List<string>();
                 var option = (optionValues.FirstOrDefault(), optionValues.LastOrDefault());
 
                 var details = new CartDetails
@@ -2497,8 +2487,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     throw new NopException($"Capture is in {refund.Status} status due to {refund.StatusDetails?.Reason}");
 
                 //save id to avoid double refund
-                var refundIds = _genericAttributeService
-                    .GetAttribute<List<string>>(nopOrder, PayPalCommerceDefaults.RefundIdAttributeName)
+                var refundIds = nopOrder.GetAttribute<List<string>>(PayPalCommerceDefaults.RefundIdAttributeName)
                     ?? new List<string>();
                 if (!refundIds.Contains(refund.Id))
                     refundIds.Add(refund.Id);
@@ -2525,7 +2514,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 if (!IsConfigured(settings))
                     throw new NopException("Plugin not configured");
 
-                var carrier = _genericAttributeService.GetAttribute<string>(shipment, PayPalCommerceDefaults.ShipmentCarrierAttribute);
+                var carrier = shipment.GetAttribute<string>(PayPalCommerceDefaults.ShipmentCarrierAttribute);
                 if (string.IsNullOrEmpty(carrier))
                     return false;
 
@@ -2535,7 +2524,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 if (!string.Equals(nopOrder.PaymentMethodSystemName, PayPalCommerceDefaults.SystemName, StringComparison.InvariantCultureIgnoreCase))
                     return false;
 
-                var customValues = _paymentService.DeserializeCustomValues(nopOrder);
+                var customValues = nopOrder.DeserializeCustomValues();
                 var orderIdKey = _localizationService.GetResource("Plugins.Payments.PayPalCommerce.Order.Id");
                 if (!customValues.TryGetValue(orderIdKey, out var orderIdValue))
                     throw new NopException("Failed to get PayPal order info");
@@ -2564,10 +2553,10 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 {
                     var orderItem = _orderService.GetOrderItemById(shipmentItem.OrderItemId);
                     var product = _productService.GetProductById(orderItem.ProductId);
-                    var sku = _productService.FormatSku(product, orderItem.AttributesXml);
-                    var seName = _urlRecordService.GetSeName(product);
-                    var url = urlHelper.RouteUrl("Product", new { SeName = seName }, _webHelper.CurrentRequestProtocol);
-                    var picture = _pictureService.GetProductPicture(product, orderItem.AttributesXml);
+                    var sku = product.Sku;
+                    var seName = product.GetSeName();
+                    var url = urlHelper.RouteUrl("Product", new { SeName = seName }, Uri.UriSchemeHttps);
+                    var picture = product.GetProductPicture(orderItem.AttributesXml, _pictureService, _productAttributeParser);
                     var imageUrl = _pictureService.GetPictureUrl(picture);
 
                     return new Item
@@ -2917,8 +2906,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                             break;
 
                         case RefundStatusType.COMPLETED:
-                            var refundIds = _genericAttributeService
-                                .GetAttribute<List<string>>(nopOrder, PayPalCommerceDefaults.RefundIdAttributeName)
+                            var refundIds = nopOrder.GetAttribute<List<string>>(PayPalCommerceDefaults.RefundIdAttributeName)
                                 ?? new List<string>();
                             if (refundIds.Contains(refund.Id))
                                 break;
@@ -2992,7 +2980,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 if (string.IsNullOrEmpty(merchantGuid))
                     throw new NopException("Merchant internal id is not set");
 
-                var storeId = _storeContext.ActiveStoreScopeConfiguration;
+                var storeId = _workContext.CurrentCustomer.GetAttribute<int>(SystemCustomerAttributeNames.AdminAreaStoreScopeConfiguration);
                 var store = storeId > 0
                     ? _storeService.GetStoreById(storeId)
                     : _storeContext.CurrentStore;
@@ -3005,15 +2993,15 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 {
                     Id = PayPalCommerceDefaults.Onboarding.Id.Sandbox,
                     Product = PayPalProductType.PPCP.ToString().ToLower(),
-                    SecondaryProducts = string.Join(',',
+                    SecondaryProducts = string.Join(",",
                         PayPalProductType.PAYMENT_METHODS.ToString().ToLower(),
                         PayPalProductType.ADVANCED_VAULTING.ToString().ToLower()),
-                    Capabilities = string.Join(',',
+                    Capabilities = string.Join(",",
                         ProductCapabilityType.APPLE_PAY.ToString().ToLower(),
                         ProductCapabilityType.GOOGLE_PAY.ToString().ToLower(),
                         ProductCapabilityType.PAYPAL_WALLET_VAULTING_ADVANCED.ToString().ToLower()),
                     IntegrationType = IntegrationType.FO.ToString().ToUpper(),
-                    Features = string.Join(',',
+                    Features = string.Join(",",
                         FeatureType.PAYMENT.ToString().ToLower(),
                         FeatureType.REFUND.ToString().ToLower(),
                         FeatureType.ACCESS_MERCHANT_INFORMATION.ToString().ToLower(),

@@ -5,7 +5,6 @@ using Nop.Services.Common;
 using Nop.Services.Shipping;
 using Nop.Web.Areas.Admin.Models.Orders;
 using Nop.Web.Framework.Components;
-using Nop.Web.Framework.Infrastructure;
 
 namespace Nop.Plugin.Payments.PayPalCommerce.Components.Admin
 {
@@ -17,7 +16,6 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Components.Admin
     {
         #region Fields
 
-        private readonly IGenericAttributeService _genericAttributeService;
         private readonly IShipmentService _shipmentService;
         private readonly PayPalCommerceServiceManager _serviceManager;
         private readonly PayPalCommerceSettings _settings;
@@ -26,12 +24,10 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Components.Admin
 
         #region Ctor
 
-        public ShipmentCarrierViewComponent(IGenericAttributeService genericAttributeService,
-            IShipmentService shipmentService,
+        public ShipmentCarrierViewComponent(IShipmentService shipmentService,
             PayPalCommerceServiceManager serviceManager,
             PayPalCommerceSettings settings)
         {
-            _genericAttributeService = genericAttributeService;
             _shipmentService = shipmentService;
             _serviceManager = serviceManager;
             _settings = settings;
@@ -56,18 +52,18 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Components.Admin
             if (!_settings.UseShipmentTracking)
                 return Content(string.Empty);
 
-            if (!widgetZone.Equals(AdminWidgetZones.OrderShipmentDetailsButtons) && !widgetZone.Equals(AdminWidgetZones.OrderShipmentAddButtons))
+            if (!widgetZone.Equals(PayPalCommerceDefaults.OrderShipmentDetailsButtons))
                 return Content(string.Empty);
 
-            if (!(additionalData is ShipmentModel shipmentModel))
+            if (!(additionalData is int shipmentModelId))
                 return Content(string.Empty);
 
-            var shipment = _shipmentService.GetShipmentById(shipmentModel.Id);
+            var shipment = _shipmentService.GetShipmentById(shipmentModelId);
             var model = new ShipmentCarrierModel
             {
-                TrackingNumber = shipmentModel.TrackingNumber,
+                TrackingNumber = shipment.TrackingNumber,
                 PayPalCommerceShipmentCarrier = shipment != null
-                    ? _genericAttributeService.GetAttribute<string>(shipment, PayPalCommerceDefaults.ShipmentCarrierAttribute)
+                    ? shipment.GetAttribute<string>(PayPalCommerceDefaults.ShipmentCarrierAttribute)
                     : null
             };
 

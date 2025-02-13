@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Reflection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Nop.Core;
@@ -13,6 +14,7 @@ using Nop.Services;
 using Nop.Services.Configuration;
 using Nop.Services.Localization;
 using Nop.Services.Security;
+using Nop.Services.Stores;
 using Nop.Web.Framework;
 using Nop.Web.Framework.Controllers;
 using Nop.Web.Framework.Mvc.Filters;
@@ -30,7 +32,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         private readonly ILocalizationService _localizationService;
         private readonly IPermissionService _permissionService;
         private readonly ISettingService _settingService;
-        private readonly IStoreContext _storeContext;
+        private readonly IStoreService _storeService;
         private readonly IWorkContext _workContext;
         private readonly PayPalCommerceModelFactory _modelFactory;
         private readonly PayPalCommerceServiceManager _serviceManager;
@@ -43,7 +45,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         public PayPalCommerceController(ILocalizationService localizationService,
             IPermissionService permissionService,
             ISettingService settingService,
-            IStoreContext storeContext,
+            IStoreService storeService,
             IWorkContext workContext,
             PayPalCommerceModelFactory modelFactory,
             PayPalCommerceServiceManager serviceManager,
@@ -52,7 +54,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
             _localizationService = localizationService;
             _permissionService = permissionService;
             _settingService = settingService;
-            _storeContext = storeContext;
+            _storeService = storeService;
             _workContext = workContext;
             _modelFactory = modelFactory;
             _serviceManager = serviceManager;
@@ -71,16 +73,18 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
         private (PayPalCommerceSettings Settings, int StoreId) LoadSettings(int? storeId = null)
         {
             if (storeId is null)
-                storeId = _storeContext.ActiveStoreScopeConfiguration;
+                storeId = GetActiveStoreScopeConfiguration(_storeService, _workContext);
 
             var settings = _settingService.LoadSetting<PayPalCommerceSettings>(storeId ?? 0);
 
             //we don't need some of the shared settings that loaded above, so load them separately for the chosen store
             if (storeId > 0)
             {
-                TPropType getSetting<TPropType>(Expression<Func<PayPalCommerceSettings, TPropType>> keySelector) =>
-                    _settingService.GetSettingByKey<TPropType>(_settingService.GetSettingKey(settings, keySelector), storeId: storeId ?? 0);
-
+                TPropType getSetting<TPropType>(Expression<Func<PayPalCommerceSettings, TPropType>> keySelector)
+                {
+                    var key = $"{typeof(PayPalCommerceSettings).Name}.{((keySelector.Body as MemberExpression)?.Member as PropertyInfo)?.Name}";
+                    return _settingService.GetSettingByKey<TPropType>(key, storeId: storeId ?? 0);
+                }
                 settings.MerchantGuid = getSetting(setting => setting.MerchantGuid);
                 settings.MerchantId = getSetting(setting => setting.MerchantId);
                 settings.WebhookUrl = getSetting(setting => setting.WebhookUrl);
@@ -324,7 +328,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Controllers
             }
 
             model.PaymentTypes = (PaymentType.Capture.ToSelectList(false, new[] { (int)PaymentType.Subscription, (int)PaymentType.Tokenize }))
-                .Select(item => new SelectListItem(item.Text, item.Value))
+                .Select(item => new SelectListItem { Text = item.Text, Value = item.Value })
                 .ToList();
 
             //merchant and onboarding details

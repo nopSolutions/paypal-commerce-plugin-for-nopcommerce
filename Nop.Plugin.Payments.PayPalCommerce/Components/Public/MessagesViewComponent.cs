@@ -6,7 +6,6 @@ using Nop.Plugin.Payments.PayPalCommerce.Domain;
 using Nop.Plugin.Payments.PayPalCommerce.Factories;
 using Nop.Plugin.Payments.PayPalCommerce.Services;
 using Nop.Web.Framework.Components;
-using Nop.Web.Framework.Infrastructure;
 
 namespace Nop.Plugin.Payments.PayPalCommerce.Components.Public
 {
@@ -51,7 +50,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Components.Public
             if (!active)
                 return Content(string.Empty);
 
-            if (!widgetZone.Equals(PublicWidgetZones.OrderSummaryContentAfter))
+            if (!widgetZone.Equals(PayPalCommerceDefaults.OrderSummaryContentAfter))
                 return Content(string.Empty);
 
             if (!_settings.UseSandbox && !_settings.ConfiguratorSupported)

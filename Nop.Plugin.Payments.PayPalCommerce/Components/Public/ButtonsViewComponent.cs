@@ -7,8 +7,6 @@ using Nop.Plugin.Payments.PayPalCommerce.Models.Public;
 using Nop.Plugin.Payments.PayPalCommerce.Services;
 using Nop.Services.Catalog;
 using Nop.Web.Framework.Components;
-using Nop.Web.Framework.Infrastructure;
-using Nop.Web.Models.Catalog;
 
 namespace Nop.Plugin.Payments.PayPalCommerce.Components.Public
 {
@@ -58,16 +56,16 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Components.Public
 
             PaymentInfoModel model = null;
 
-            if (widgetZone.Equals(PublicWidgetZones.ProductDetailsAddInfo))
+            if (widgetZone.Equals(PayPalCommerceDefaults.ProductDetailsAddInfo))
             {
                 if (_settings.DisplayButtonsOnProductDetails)
                 {
-                    var productId = additionalData is ProductDetailsModel.AddToCartModel product ? (int?)product.ProductId : null;
+                    var productId = additionalData is int id ? (int?)id : null;
                     if (productId is null || (_productService.GetProductById(productId ?? 0))?.ParentGroupedProductId == 0)
                         model = _modelFactory.PreparePaymentInfoModel(ButtonPlacement.Product, productId);
                 }
             }
-            else if (widgetZone.Equals(PublicWidgetZones.OrderSummaryContentBefore))
+            else if (widgetZone.Equals(PayPalCommerceDefaults.OrderSummaryContentBefore))
             {
                 if (_settings.DisplayButtonsOnShoppingCart)
                 {

@@ -10,7 +10,7 @@
         <h1>@T("Checkout.ConfirmYourOrder")</h1>
     </div>
     <div class="page-body checkout-data">
-        @await Component.InvokeAsync("Widget", new { widgetZone = PublicWidgetZones.CheckoutConfirmTop, additionalData = Model })
+        @await Component.InvokeAsync("Widget", new { widgetZone = "checkout_confirm_top", additionalData = Model })
         <div class="section confirm-order">
             <form asp-controller="PayPalCommercePublic" asp-action="ConfirmOrderPost" method="post" id="confirm-order-form">
                 <input asp-for="OrderId" type="hidden" />
@@ -97,7 +97,7 @@
                 }
             </form>
         </div>
-        @await Component.InvokeAsync("Widget", new { widgetZone = PublicWidgetZones.CheckoutConfirmBottom, additionalData = Model })
+        @await Component.InvokeAsync("Widget", new { widgetZone = "checkout_confirm_bottom", additionalData = Model })
         <div class="section order-summary">
             @await Component.InvokeAsync("OrderSummary", new { prepareAndDisplayOrderReviewData = true })
         </div>

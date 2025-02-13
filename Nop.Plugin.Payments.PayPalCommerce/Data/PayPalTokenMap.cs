@@ -1,6 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Nop.Data.Mapping;
+﻿using Nop.Data.Mapping;
 using Nop.Plugin.Payments.PayPalCommerce.Domain;
 
 namespace Nop.Plugin.Payments.PayPalCommerce.Data
@@ -10,22 +8,19 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Data
     /// </summary>
     public class PayPalTokenMap : NopEntityTypeConfiguration<PayPalToken>
     {
-        #region Methods
+        #region Ctor
 
-        /// <summary>
-        /// Configures the entity
-        /// </summary>
-        public override void Configure(EntityTypeBuilder<PayPalToken> builder)
+        public PayPalTokenMap()
         {
-            builder.ToTable(nameof(PayPalToken));
-            builder.HasKey(token => token.Id);
-            builder.Property(token => token.CustomerId).IsRequired();
-            builder.Property(token => token.VaultId).HasMaxLength(100);
-            builder.Property(token => token.VaultCustomerId).HasMaxLength(100);
-            builder.Property(token => token.TransactionId).HasMaxLength(100);
-            builder.Property(token => token.Title).HasMaxLength(200);
-            builder.Property(token => token.Expiration).HasMaxLength(100);
-            builder.Property(token => token.ClientId).HasMaxLength(200).IsRequired();
+            ToTable(nameof(PayPalToken));
+            HasKey(token => token.Id);
+            Property(token => token.CustomerId).IsRequired();
+            Property(token => token.VaultId).HasMaxLength(100);
+            Property(token => token.VaultCustomerId).HasMaxLength(100);
+            Property(token => token.TransactionId).HasMaxLength(100);
+            Property(token => token.Title).HasMaxLength(200);
+            Property(token => token.Expiration).HasMaxLength(100);
+            Property(token => token.ClientId).HasMaxLength(200).IsRequired();
         }
 
         #endregion

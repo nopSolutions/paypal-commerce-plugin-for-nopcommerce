@@ -9,7 +9,7 @@ using Nop.Plugin.Payments.PayPalCommerce.Data;
 using Nop.Plugin.Payments.PayPalCommerce.Domain;
 using Nop.Plugin.Payments.PayPalCommerce.Factories;
 using Nop.Plugin.Payments.PayPalCommerce.Services;
-using Nop.Web.Framework.Infrastructure.Extensions;
+using Nop.Web.Framework.Infrastructure;
 
 namespace Nop.Plugin.Payments.PayPalCommerce.Infrastructure
 {
@@ -26,11 +26,12 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Infrastructure
         /// <param name="config">Config</param>
         public void Register(ContainerBuilder builder, ITypeFinder typeFinder, NopConfig config)
         {
+            builder.RegisterType<PayPalCommerceHttpClient>().AsSelf().InstancePerLifetimeScope();
             builder.RegisterType<PayPalCommerceModelFactory>().AsSelf().InstancePerLifetimeScope();
             builder.RegisterType<PayPalCommerceServiceManager>().AsSelf().InstancePerLifetimeScope();
             builder.RegisterType<PayPalTokenService>().AsSelf().InstancePerLifetimeScope();
 
-            builder.RegisterPluginDataContext<PayPalTokenObjectContext>("nop_object_context_paypal_token");
+            this.RegisterPluginDataContext<PayPalTokenObjectContext>(builder, "nop_object_context_paypal_token");
             builder.RegisterType<EfRepository<PayPalToken>>().As<IRepository<PayPalToken>>()
                 .WithParameter(ResolvedParameter.ForNamed<IDbContext>("nop_object_context_paypal_token"))
                 .InstancePerLifetimeScope();

@@ -1,7 +1,5 @@
-﻿using System.Collections.Generic;
-using System.Linq;
+﻿using System.Linq;
 using Microsoft.AspNetCore.Http;
-using Nop.Core.Domain.Gdpr;
 using Nop.Core.Domain.Shipping;
 using Nop.Core.Events;
 using Nop.Services.Common;
@@ -9,9 +7,8 @@ using Nop.Services.Events;
 using Nop.Services.Localization;
 using Nop.Services.Shipping;
 using Nop.Web.Areas.Admin.Models.Orders;
-using Nop.Web.Areas.Admin.Models.Payments;
 using Nop.Web.Framework.Events;
-using Nop.Web.Framework.Models;
+using Nop.Web.Framework.Mvc.Models;
 using Nop.Web.Models.Customer;
 
 namespace Nop.Plugin.Payments.PayPalCommerce.Services
@@ -20,11 +17,10 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
     /// Represents the plugin event consumer
     /// </summary>
     public class EventConsumer :
-        IConsumer<CustomerPermanentlyDeleted>,
-        IConsumer<ModelPreparedEvent<BaseNopModel>>,
-        IConsumer<ModelReceivedEvent<BaseNopModel>>,
-        IConsumer<EntityInsertedEvent<Shipment>>,
-        IConsumer<EntityUpdatedEvent<Shipment>>
+        IConsumer<ModelPrepared<BaseNopModel>>,
+        IConsumer<ModelReceived<BaseNopModel>>,
+        IConsumer<EntityInserted<Shipment>>,
+        IConsumer<EntityUpdated<Shipment>>
     {
         #region Fields
 
@@ -59,25 +55,11 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         #region Methods
 
         /// <summary>
-        /// Handle customer permanently deleted event
-        /// </summary>
-        /// <param name="eventMessage">Event message</param>
-        public void HandleEvent(CustomerPermanentlyDeleted eventMessage)
-        {
-            //delete customer's payment tokens
-            _serviceManager.DeletePaymentTokens(_settings, eventMessage.CustomerId);
-        }
-
-        /// <summary>
         /// Handle model prepared event
         /// </summary>
         /// <param name="eventMessage">Event message</param>
-        public void HandleEvent(ModelPreparedEvent<BaseNopModel> eventMessage)
+        public void HandleEvent(ModelPrepared<BaseNopModel> eventMessage)
         {
-            //exclude the plugin from payment providers list, we'll display it another way
-            if (eventMessage.Model is PaymentMethodListModel paymentMethodsModel)
-                paymentMethodsModel.Data = paymentMethodsModel.Data.Where(method => !string.Equals(method.SystemName, PayPalCommerceDefaults.SystemName));
-
             if (!(eventMessage.Model is CustomerNavigationModel navigationModel))
                 return;
 
@@ -104,7 +86,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// Handle model received event
         /// </summary>
         /// <param name="eventMessage">Event message</param>
-        public void HandleEvent(ModelReceivedEvent<BaseNopModel> eventMessage)
+        public void HandleEvent(ModelReceived<BaseNopModel> eventMessage)
         {
             if (!(eventMessage.Model is ShipmentModel shipmentModel))
                 return;
@@ -126,7 +108,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 {
                     //when we add a new shipping, it's not in the db yet and we cannot save a generic attribute to it,
                     //so we temporarily store the data in the context, we'll move it to the attribute later during the same request
-                    _httpContextAccessor.HttpContext.Items.TryAdd(PayPalCommerceDefaults.ShipmentCarrierAttribute, carrier);
+                    if (!_httpContextAccessor.HttpContext.Items.ContainsKey(PayPalCommerceDefaults.ShipmentCarrierAttribute))
+                        _httpContextAccessor.HttpContext.Items.Add(PayPalCommerceDefaults.ShipmentCarrierAttribute, carrier);
                 }
             }
         }
@@ -135,7 +118,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// Handle shipment inserted event
         /// </summary>
         /// <param name="eventMessage">Event message</param>
-        public void HandleEvent(EntityInsertedEvent<Shipment> eventMessage)
+        public void HandleEvent(EntityInserted<Shipment> eventMessage)
         {
             if (!PayPalCommerceServiceManager.IsConnected(_settings))
                 return;
@@ -158,7 +141,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// Handle shipment updated event
         /// </summary>
         /// <param name="eventMessage">Event message</param>
-        public void HandleEvent(EntityUpdatedEvent<Shipment> eventMessage)
+        public void HandleEvent(EntityUpdated<Shipment> eventMessage)
         {
             if (!PayPalCommerceServiceManager.IsConnected(_settings))
                 return;

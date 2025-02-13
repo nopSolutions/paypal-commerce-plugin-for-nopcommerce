@@ -201,6 +201,18 @@ namespace Nop.Plugin.Payments.PayPalCommerce
 
         #endregion
 
+        #region Widget zones
+
+        public static string ProductDetailsAddInfo => "productdetails_add_info";
+        public static string OrderSummaryContentBefore => "order_summary_content_before";
+        public static string OrderSummaryContentAfter => "order_summary_content_after";
+        public static string Footer => "footer";
+        public static string HeaderLinksBefore => "header_links_before";
+        public static string OrderShipmentDetailsButtons => "admin_order_shipment_details_buttons";
+        public static string PaymentMethodListTop => "admin_payment_method_list_buttons";
+
+        #endregion
+
         #region Onboarding
 
         /// <summary>

@@ -1,5 +1,5 @@
 ﻿using Nop.Plugin.Payments.PayPalCommerce.Domain;
-using Nop.Web.Framework.Models;
+using Nop.Web.Framework.Mvc.Models;
 
 namespace Nop.Plugin.Payments.PayPalCommerce.Models.Public
 {

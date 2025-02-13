@@ -1,7 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Nop.Plugin.Payments.PayPalCommerce.Services;
 using Nop.Web.Framework.Components;
-using Nop.Web.Framework.Infrastructure;
 
 namespace Nop.Plugin.Payments.PayPalCommerce.Components.Admin
 {
@@ -39,7 +38,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Components.Admin
         /// <returns>The view component result</returns>
         public IViewComponentResult Invoke(string widgetZone, object additionalData)
         {
-            if (!widgetZone.Equals(AdminWidgetZones.PaymentMethodListTop))
+            if (!widgetZone.Equals(PayPalCommerceDefaults.PaymentMethodListTop))
                 return Content(string.Empty);
 
             var (active, _) = _serviceManager.IsActive(_settings);
