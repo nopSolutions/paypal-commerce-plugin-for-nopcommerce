@@ -20,6 +20,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Models.Public
 
         public MessagesModel MessagesModel { get; set; } = new();
 
+        public (bool? IsRecurring, bool IsShippable) Cart { get; set; } = new();
+
         #endregion
     }
 }
