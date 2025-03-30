@@ -61,8 +61,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Components.Public
             var routeName = HttpContext.GetEndpoint()?.Metadata.GetMetadata<RouteNameMetadata>()?.RouteName;
             var isCartPage = routeName == PayPalCommerceDefaults.Route.ShoppingCart;
             var isPaymentMethodPage = routeName == PayPalCommerceDefaults.Route.PaymentInfo;
-            var isCheckoutPage = (HttpContext.Request.RouteValues?.TryGetValue("controller", out var controller) ?? false) &&
-                string.Equals(controller.ToString(), "Checkout", StringComparison.InvariantCultureIgnoreCase);
+            object controller = null;
+            var isCheckoutPage = (HttpContext.Request.RouteValues?.TryGetValue("controller", out controller) ?? false) &&
+                string.Equals(controller?.ToString() ?? string.Empty, "Checkout", StringComparison.InvariantCultureIgnoreCase);
             if (!isCartPage && !isPaymentMethodPage && !isCheckoutPage)
                 return Content(string.Empty);
 
