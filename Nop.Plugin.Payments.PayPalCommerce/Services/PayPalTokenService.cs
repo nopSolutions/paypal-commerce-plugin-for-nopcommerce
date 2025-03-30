@@ -100,6 +100,10 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 return;
             }
 
+            //don't insert tokens with no customer identifier
+            if (token.CustomerId == 0)
+                return;
+
             if (!tokens.Any())
                 token.IsPrimaryMethod = true;
 
