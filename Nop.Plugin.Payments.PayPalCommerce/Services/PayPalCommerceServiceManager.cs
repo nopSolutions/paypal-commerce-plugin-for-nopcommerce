@@ -387,6 +387,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             var items = details.Cart.Select(item =>
             {
                 var product = _productService.GetProductById(item.ProductId);
+                if (product is null)
+                    return null;
+
                 var sku = _productService.FormatSku(product, item.AttributesXml);
                 var seName = _urlRecordService.GetSeName(product);
                 var url = urlHelper.RouteUrl("Product", new { SeName = seName }, _webHelper.CurrentRequestProtocol);
@@ -410,7 +413,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     ImageUrl = imageUrl,
                     UnitAmount = PrepareMoney(unitPriceExclTax, details.CurrencyCode)
                 };
-            }).ToList();
+            }).Where(item => item != null).ToList();
 
             //and checkout attributes
             var checkoutAttributes = _genericAttributeService
@@ -1050,10 +1053,11 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// <param name="settings">Plugin settings</param>
         /// <param name="placement">Button placement</param>
         /// <param name="productId">Product id</param>
-        /// <returns>The script details, customer details, messages details; error message if exists</returns>
+        /// <returns>The script details, customer details, messages details; cart details; error message if exists</returns>
         public (((string ScriptUrl, string ClientToken, string UserToken),
             (string Email, string Name),
-            (string MessageConfig, string Amount)),
+            (string MessageConfig, string Amount),
+            (bool? IsRecurring, bool IsShippable)),
             string Error)
             PreparePaymentDetails(PayPalCommerceSettings settings, ButtonPlacement placement, int? productId)
         {
@@ -1160,7 +1164,11 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 }
                 var messageConfig = !string.IsNullOrEmpty(config?.Status) ? JsonConvert.SerializeObject(config, Formatting.Indented) : "{}";
 
-                return ((scriptUrl, clientToken, userToken), (email, fullName), (messageConfig, amount));
+                //cart details
+                var (isRecurring, _) = CheckShoppingCartIsRecurring(placement, productId);
+                var (isShippable, _) = CheckShippingIsRequired(productId);
+
+                return ((scriptUrl, clientToken, userToken), (email, fullName), (messageConfig, amount), (isRecurring, isShippable));
             });
         }
 
@@ -1299,6 +1307,35 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     shippingIsRequired = product.IsShipEnabled;
 
                 return shippingIsRequired;
+            }, false);
+        }
+
+        /// <summary>
+        /// Check whether the current cart/product is recurring
+        /// </summary>
+        /// <param name="placement">Button placement</param>
+        /// <param name="productId">Product id</param>
+        /// <returns>
+        /// A task that represents the asynchronous operation
+        /// The task result contains the check result; error message if exists
+        /// </returns>
+        public (bool? IsRecurring, string Error) CheckShoppingCartIsRecurring(ButtonPlacement placement, int? productId = null)
+        {
+            return HandleFunction(() =>
+            {
+                var customer = _workContext.CurrentCustomer;
+                var store = _storeContext.CurrentStore;
+                var cart = GetShoppingCart(customer, store.Id);
+                var isRecurring = _shoppingCartService.ShoppingCartIsRecurring(cart);
+
+                if (!isRecurring && _productService.GetProductById(productId ?? 0) is Product product)
+                    isRecurring = product.IsRecurring;
+
+                //recurring payments not yet supported
+                if (isRecurring)
+                    return (bool?)null;
+
+                return isRecurring;
             }, false);
         }
 
@@ -1469,6 +1506,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 var savedPaymentToken = _tokenService.GetById(cardId ?? 0);
                 if (savedPaymentToken != null && savedPaymentToken.CustomerId != customer.Id)
                     throw new NopException("Card details not found");
+
+                if (_shoppingCartService.ShoppingCartIsRecurring(cart))
+                    throw new NopException("Recurring payment not supported");
 
                 var paymentRequest = _actionContextAccessor.ActionContext.HttpContext.Session
                     .Get<ProcessPaymentRequest>(PayPalCommerceDefaults.PaymentRequestSessionKey);
@@ -2167,10 +2207,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         /// Get Apple Pay transaction info
         /// </summary>
         /// <param name="placement">Button placement</param>
-        /// <param name="withShipping">Whether to prepare shipping details</param>
         /// <returns>The Apple Pay transaction info; error message if exists</returns>
         public ((OrderMoney Amount, Contact BillingAddress, Contact ShippingAddress, Shipping Shipping, string StoreName), string Error)
-            GetAppleTransactionInfo(ButtonPlacement placement, bool withShipping)
+            GetAppleTransactionInfo(ButtonPlacement placement)
         {
             return HandleFunction(() =>
             {
@@ -2751,12 +2790,39 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
 
                     if (paymentTokenCreated)
                     {
-                        if (string.IsNullOrEmpty(paymentToken.Metadata?.OrderId))
-                            throw new NopException("Webhook error", new NopException("No transaction associated with the payment token"));
+                        var customerId = int.TryParse(paymentToken.Customer?.MerchantCustomerId, out var id) ? id : (int?)null;
 
-                        var paymentTokenOrder = _httpClient
-                            .Request<GetOrderRequest, GetOrderResponse>(new GetOrderRequest { OrderId = paymentToken.Metadata.OrderId }, settings);
-                        paymentToken.CustomId = paymentTokenOrder.CustomId;
+                        //try to get associated transaction
+                        if (!string.IsNullOrEmpty(paymentToken.Metadata?.OrderId))
+                        {
+                            try
+                            {
+                                var orderRequest = new GetOrderRequest { OrderId = paymentToken.Metadata.OrderId };
+                                var paymentTokenOrder = _httpClient.Request<GetOrderRequest, GetOrderResponse>(orderRequest, settings);
+                                if (Guid.TryParse(paymentTokenOrder.CustomId, out var guid))
+                                    customerId = _orderService.GetOrderByGuid(guid)?.CustomerId;
+                            }
+                            catch { }
+                        }
+
+                        _tokenService.Insert(new PayPalToken
+                        {
+                            ClientId = settings.ClientId,
+                            CustomerId = customerId ?? 0,
+                            IsPrimaryMethod = false,
+                            VaultId = paymentToken.Id,
+                            VaultCustomerId = paymentToken.Customer?.Id,
+                            TransactionId = paymentToken.Metadata?.OrderId,
+                            Type = paymentToken.PaymentSource?.Card != null
+                                ? nameof(paymentToken.PaymentSource.Card)
+                                : (paymentToken.PaymentSource?.Venmo != null
+                                ? nameof(paymentToken.PaymentSource.Venmo)
+                                : (paymentToken.PaymentSource?.PayPal != null
+                                ? nameof(paymentToken.PaymentSource.PayPal)
+                                : null))
+                        });
+
+                        return true;
                     }
 
                     if (paymentTokenDeleted)
@@ -2773,29 +2839,6 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                     !(_orderService.GetOrderByGuid(orderGuid) is NopOrder nopOrder))
                 {
                     throw new NopException("Webhook error", new NopException($"Could not find an order '{orderGuid}'"));
-                }
-
-                if (paymentToken != null)
-                {
-                    //payment token actions (continuation)
-                    _tokenService.Insert(new PayPalToken
-                    {
-                        ClientId = settings.ClientId,
-                        CustomerId = nopOrder.CustomerId,
-                        IsPrimaryMethod = false,
-                        VaultId = paymentToken.Id,
-                        VaultCustomerId = paymentToken.Customer?.Id,
-                        TransactionId = paymentToken.Metadata.OrderId,
-                        Type = paymentToken.PaymentSource?.Card != null
-                            ? nameof(paymentToken.PaymentSource.Card)
-                            : (paymentToken.PaymentSource?.Venmo != null
-                            ? nameof(paymentToken.PaymentSource.Venmo)
-                            : (paymentToken.PaymentSource?.PayPal != null
-                            ? nameof(paymentToken.PaymentSource.PayPal)
-                            : null))
-                    });
-
-                    return true;
                 }
 
                 nopOrder.OrderNotes.Add(new OrderNote
@@ -3227,7 +3270,9 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
                 foreach (var token in tokens)
                 {
                     try
-                    { _httpClient.Request<DeletePaymentTokenRequest, EmptyResponse>(new DeletePaymentTokenRequest { Id = token.VaultId }, settings); }
+                    {
+                        _httpClient.Request<DeletePaymentTokenRequest, EmptyResponse>(new DeletePaymentTokenRequest { Id = token.VaultId }, settings);
+                    }
                     catch { }
                 }
 

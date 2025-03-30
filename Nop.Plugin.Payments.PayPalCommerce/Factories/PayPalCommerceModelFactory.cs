@@ -74,7 +74,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Factories
         /// <returns>The payment info model</returns>
         public PaymentInfoModel PreparePaymentInfoModel(ButtonPlacement placement, int? productId = null)
         {
-            var (((scriptUrl, clientToken, userToken), (email, name), (messageConfig, amount)), _) = _serviceManager
+            var (((scriptUrl, clientToken, userToken), (email, name), (messageConfig, amount), (isRecurring, isShippable)), _) = _serviceManager
                 .PreparePaymentDetails(_settings, placement, productId);
 
             return new PaymentInfoModel
@@ -83,7 +83,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Factories
                 ProductId = productId,
                 Script = (scriptUrl, clientToken, userToken),
                 Customer = (email, name),
-                MessagesModel = new MessagesModel { Config = messageConfig, Amount = amount }
+                MessagesModel = new MessagesModel { Config = messageConfig, Amount = amount },
+                Cart = (isRecurring, isShippable)
             };
         }
 
@@ -288,7 +289,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Factories
             (model.CheckoutIsEnabled, model.LoginIsRequired, _) = _serviceManager.CheckoutIsEnabled();
 
             var ((amount, billingAddress, shippingAddress, shipping, storeName), error) = _serviceManager
-                .GetAppleTransactionInfo(placement, !shippingIsSet);
+                .GetAppleTransactionInfo(placement);
             if (!string.IsNullOrEmpty(error))
             {
                 model.Error = error;
