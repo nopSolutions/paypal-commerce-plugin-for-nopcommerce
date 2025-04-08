@@ -467,7 +467,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             }
             var orderTotal = PrepareMoney(total.Value, details.CurrencyCode);
 
-            var (shippingTotal, _, _) = await _orderTotalCalculationService.GetShoppingCartShippingTotalAsync(details.Cart, includingTax: false);
+            var (shippingTotal, _, _) = await _orderTotalCalculationService.GetShoppingCartShippingTotalAsync(details.Cart, includingTax: true);
             var orderShippingTotal = PrepareMoney(shippingTotal ?? decimal.Zero, details.CurrencyCode);
 
             var (taxTotal, _) = await _orderTotalCalculationService.GetTaxTotalAsync(details.Cart, usePaymentMethodAdditionalFee: false);
