@@ -19,6 +19,7 @@ using Nop.Core.Domain.Orders;
 using Nop.Core.Domain.Payments;
 using Nop.Core.Domain.Shipping;
 using Nop.Core.Domain.Stores;
+using Nop.Core.Domain.Tax;
 using Nop.Core.Http.Extensions;
 using Nop.Plugin.Payments.PayPalCommerce.Domain;
 using Nop.Plugin.Payments.PayPalCommerce.Services.Api;
@@ -97,6 +98,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
         private readonly PayPalCommerceHttpClient _httpClient;
         private readonly PayPalTokenService _tokenService;
         private readonly ShippingSettings _shippingSettings;
+        private readonly TaxSettings _taxSettings;
 
         #endregion
 
@@ -136,7 +138,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             OrderSettings orderSettings,
             PayPalCommerceHttpClient httpClient,
             PayPalTokenService tokenService,
-            ShippingSettings shippingSettings)
+            ShippingSettings shippingSettings,
+            TaxSettings taxSettings)
         {
             _currencySettings = currencySettings;
             _customerSettings = customerSettings;
@@ -173,6 +176,7 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             _httpClient = httpClient;
             _tokenService = tokenService;
             _shippingSettings = shippingSettings;
+            _taxSettings = taxSettings;
         }
 
         #endregion
@@ -454,7 +458,8 @@ namespace Nop.Plugin.Payments.PayPalCommerce.Services
             }
             var orderTotal = PrepareMoney(total.Value, details.CurrencyCode);
 
-            var shippingTotal = _orderTotalCalculationService.GetShoppingCartShippingTotal(details.Cart, includingTax: false);
+            var shippingTotal = _orderTotalCalculationService
+                .GetShoppingCartShippingTotal(details.Cart, includingTax: _taxSettings.ShippingPriceIncludesTax);
             var orderShippingTotal = PrepareMoney(shippingTotal ?? decimal.Zero, details.CurrencyCode);
 
             var taxTotal = _orderTotalCalculationService.GetTaxTotal(details.Cart, usePaymentMethodAdditionalFee: false);
